@@ -96,10 +96,10 @@ export function ZikrCarousel({ items, title }: { items: Zikr[]; title: string })
                       className="font-quran text-center"
                       style={{
                         fontSize: zikr.text.length > 200 ? "1.05rem" : zikr.text.length > 100 ? "1.2rem" : "1.4rem",
-                        lineHeight: 2,
+                        lineHeight: 2.2,
                       }}
                     >
-                      {zikr.text}
+                      {renderWithAyahNumbers(zikr.text)}
                     </p>
                     {zikr.fadl && (
                       <div className="mt-5 flex items-start gap-2 rounded-2xl border p-3 text-xs" style={{ background: "color-mix(in oklab, var(--gold) 8%, transparent)", borderColor: "color-mix(in oklab, var(--gold) 30%, transparent)" }}>
