@@ -248,3 +248,41 @@ function SettingRow({
     </div>
   );
 }
+
+function NotifToggle({
+  title,
+  subtitle,
+  checked,
+  onChange,
+}: {
+  title: string;
+  subtitle: string;
+  checked: boolean;
+  onChange: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onChange}
+      className="flex w-full items-center gap-3 rounded-xl border p-3 text-right transition-all"
+      style={{
+        background: checked ? "color-mix(in oklab, var(--gold) 10%, transparent)" : "var(--card)",
+        borderColor: checked ? "var(--gold)" : "var(--border)",
+      }}
+    >
+      <div className="flex-1">
+        <p className="text-sm font-bold">{title}</p>
+        <p className="text-[11px] text-muted-foreground">{subtitle}</p>
+      </div>
+      <div
+        className="relative h-6 w-11 shrink-0 rounded-full transition-colors"
+        style={{ background: checked ? "var(--gradient-gold)" : "var(--muted)" }}
+      >
+        <div
+          className="absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-all"
+          style={{ right: checked ? "calc(100% - 1.375rem)" : "0.125rem" }}
+        />
+      </div>
+    </button>
+  );
+}
