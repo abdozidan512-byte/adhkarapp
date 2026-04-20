@@ -3,6 +3,7 @@ import { useMemo, useState } from "react";
 import { Search, ChevronLeft, BookOpen } from "lucide-react";
 import { surahs } from "@/data/surahs";
 import { PageHeader } from "@/components/PageHeader";
+import { ContinueReading } from "@/components/ContinueReading";
 
 export const Route = createFileRoute("/quran/")({
   component: QuranIndex,
@@ -27,7 +28,8 @@ function QuranIndex() {
   return (
     <div>
       <PageHeader title="المصحف الشريف" subtitle="114 سورة • تلاوة بأشهر القراء" />
-      <div className="px-4 pt-3">
+      <div className="space-y-3 px-4 pt-3">
+        <ContinueReading />
         <div
           className="flex items-center gap-2 rounded-2xl border px-4 py-3"
           style={{ background: "var(--card)", boxShadow: "var(--shadow-soft)" }}

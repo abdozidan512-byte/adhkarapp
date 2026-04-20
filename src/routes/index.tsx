@@ -1,6 +1,7 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { Sparkles, BookOpen, Compass, Settings, Sun, Moon } from "lucide-react";
 import { PrayerTimesCard } from "@/components/PrayerTimesCard";
+import { ContinueReading } from "@/components/ContinueReading";
 import { useTheme } from "@/contexts/ThemeContext";
 
 export const Route = createFileRoute("/")({
@@ -58,6 +59,11 @@ function HomePage() {
           <QuickCard to="/qibla" icon={Compass} title="القبلة" subtitle="بوصلة دقيقة" />
           <QuickCard to="/settings" icon={Settings} title="الإعدادات" subtitle="ثيم، إشعارات، APK" />
         </div>
+      </section>
+
+      {/* Continue reading */}
+      <section className="px-4 pt-4">
+        <ContinueReading />
       </section>
 
       {/* Quote */}

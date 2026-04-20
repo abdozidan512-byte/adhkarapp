@@ -4,11 +4,14 @@ import useEmblaCarousel from "embla-carousel-react";
 import { ChevronRight, ZoomIn, ZoomOut, Play, Pause, Download, Check, Loader2, Volume2 } from "lucide-react";
 import { surahs, reciters, type ReciterId } from "@/data/surahs";
 import { fetchSurahText, getAyahAudioUrl, downloadAyahAudio, getAyahAudioBlob, audioKey } from "@/lib/quran-api";
-import { getCachedAudioKeys } from "@/lib/db";
+import { getCachedAudioKeys, saveReadingProgress } from "@/lib/db";
 import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/quran/$num")({
   component: SurahReader,
+  validateSearch: (s: Record<string, unknown>) => ({
+    page: typeof s.page === "string" ? Number(s.page) : typeof s.page === "number" ? s.page : undefined,
+  }),
   loader: ({ params }) => {
     const num = Number(params.num);
     const meta = surahs.find((s) => s.number === num);
@@ -31,6 +34,7 @@ const PAGE_SIZE = 5; // ayahs per swipe page
 
 function SurahReader() {
   const meta = Route.useLoaderData();
+  const search = Route.useSearch();
   const [ayahs, setAyahs] = useState<{ numberInSurah: number; text: string }[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [fontSize, setFontSize] = useState(28);
@@ -85,6 +89,28 @@ function SurahReader() {
         ayahs.slice(i * PAGE_SIZE, (i + 1) * PAGE_SIZE)
       )
     : [];
+
+  // Jump to ?page= once carousel & ayahs are ready
+  useEffect(() => {
+    if (!emblaApi || !ayahs || search.page === undefined) return;
+    const target = Math.max(0, Math.min(pages.length - 1, search.page));
+    emblaApi.scrollTo(target, true);
+  }, [emblaApi, ayahs, search.page, pages.length]);
+
+  // Persist reading progress whenever the page changes
+  useEffect(() => {
+    if (!ayahs || pages.length === 0) return;
+    const currentPage = pages[page];
+    if (!currentPage || currentPage.length === 0) return;
+    saveReadingProgress({
+      surahNumber: meta.number,
+      surahName: meta.name,
+      page,
+      totalPages: pages.length,
+      ayah: currentPage[0].numberInSurah,
+      updatedAt: Date.now(),
+    });
+  }, [page, ayahs, pages.length, meta.number, meta.name]);
 
   async function playAyah(ayah: number) {
     if (audioRef.current) {
