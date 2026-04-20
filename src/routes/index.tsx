@@ -61,6 +61,11 @@ function HomePage() {
         </div>
       </section>
 
+      {/* Continue reading */}
+      <section className="px-4 pt-4">
+        <ContinueReading />
+      </section>
+
       {/* Quote */}
       <section className="px-5 py-8">
         <div
