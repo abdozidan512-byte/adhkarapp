@@ -3,6 +3,7 @@ import { useMemo, useState } from "react";
 import { Search, ChevronLeft, BookOpen } from "lucide-react";
 import { surahs } from "@/data/surahs";
 import { PageHeader } from "@/components/PageHeader";
+import { ContinueReading } from "@/components/ContinueReading";
 
 export const Route = createFileRoute("/quran/")({
   component: QuranIndex,
