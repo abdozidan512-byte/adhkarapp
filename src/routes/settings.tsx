@@ -4,7 +4,7 @@ import { Bell, Moon, Sun, Smartphone, Trash2, HardDrive, Download, ExternalLink 
 import { PageHeader } from "@/components/PageHeader";
 import { useTheme } from "@/contexts/ThemeContext";
 import { listAudio, deleteAudio, getSetting, saveSetting } from "@/lib/db";
-import { useNotifications } from "@/lib/notifications";
+import { useNotifications, notifTypeLabels, type NotifType } from "@/lib/notifications";
 
 export const Route = createFileRoute("/settings")({
   component: SettingsPage,
@@ -13,7 +13,7 @@ export const Route = createFileRoute("/settings")({
 
 function SettingsPage() {
   const { theme, toggleTheme } = useTheme();
-  const { permission, requestPermission, scheduleAll, enabled, setEnabled } = useNotifications();
+  const { permission, requestPermission, scheduleAll, enabled, setEnabled, types, setType } = useNotifications();
   const [storage, setStorage] = useState<{ count: number; bytes: number }>({ count: 0, bytes: 0 });
   const [reminderMin, setReminderMin] = useState(15);
 
@@ -41,6 +41,14 @@ function SettingsPage() {
     setReminderMin(v);
     await saveSetting("reminderMin", v);
     if (enabled) scheduleAll(v);
+  }
+
+  function toggleNotifType(type: NotifType) {
+    setType(type, !types[type]);
+    if (enabled) {
+      // Re-schedule with new prefs
+      setTimeout(() => scheduleAll(reminderMin), 50);
+    }
   }
 
   async function toggleNotifications() {
@@ -103,28 +111,45 @@ function SettingsPage() {
 
         {enabled && (
           <div
-            className="space-y-2 rounded-2xl border p-4 text-sm"
+            className="space-y-4 rounded-2xl border p-4 text-sm"
             style={{ background: "var(--gradient-card)" }}
           >
-            <p className="font-bold">تذكير قبل الصلاة</p>
-            <div className="flex gap-2">
-              {[5, 10, 15, 30].map((v) => (
-                <button
-                  key={v}
-                  onClick={() => saveReminder(v)}
-                  className="flex-1 rounded-xl border py-2 text-xs font-bold transition-all"
-                  style={{
-                    background: reminderMin === v ? "var(--gradient-gold)" : "transparent",
-                    color: reminderMin === v ? "var(--gold-foreground)" : "inherit",
-                  }}
-                >
-                  {v} د
-                </button>
-              ))}
+            <div>
+              <p className="mb-2 font-bold">⏱️ مدة التذكير قبل الصلاة</p>
+              <div className="flex gap-2">
+                {[5, 10, 15, 30].map((v) => (
+                  <button
+                    key={v}
+                    onClick={() => saveReminder(v)}
+                    className="flex-1 rounded-xl border py-2 text-xs font-bold transition-all"
+                    style={{
+                      background: reminderMin === v ? "var(--gradient-gold)" : "transparent",
+                      color: reminderMin === v ? "var(--gold-foreground)" : "inherit",
+                    }}
+                  >
+                    {v} د
+                  </button>
+                ))}
+              </div>
             </div>
-            <p className="text-xs text-muted-foreground">
-              يتم تذكيرك بـ: مواقيت الصلاة، أذكار بعد الصلاة، أذكار الصباح والمساء.
-            </p>
+
+            <div className="border-t pt-3">
+              <p className="mb-1 font-bold">🔔 أنواع الإشعارات</p>
+              <p className="mb-3 text-xs text-muted-foreground">
+                ألغِ ما لا تريد استقباله من إشعارات.
+              </p>
+              <div className="space-y-2">
+                {(Object.keys(notifTypeLabels) as NotifType[]).map((t) => (
+                  <NotifToggle
+                    key={t}
+                    title={notifTypeLabels[t].title}
+                    subtitle={notifTypeLabels[t].subtitle}
+                    checked={types[t]}
+                    onChange={() => toggleNotifType(t)}
+                  />
+                ))}
+              </div>
+            </div>
           </div>
         )}
 
@@ -221,5 +246,43 @@ function SettingRow({
       </div>
       {action}
     </div>
+  );
+}
+
+function NotifToggle({
+  title,
+  subtitle,
+  checked,
+  onChange,
+}: {
+  title: string;
+  subtitle: string;
+  checked: boolean;
+  onChange: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onChange}
+      className="flex w-full items-center gap-3 rounded-xl border p-3 text-right transition-all"
+      style={{
+        background: checked ? "color-mix(in oklab, var(--gold) 10%, transparent)" : "var(--card)",
+        borderColor: checked ? "var(--gold)" : "var(--border)",
+      }}
+    >
+      <div className="flex-1">
+        <p className="text-sm font-bold">{title}</p>
+        <p className="text-[11px] text-muted-foreground">{subtitle}</p>
+      </div>
+      <div
+        className="relative h-6 w-11 shrink-0 rounded-full transition-colors"
+        style={{ background: checked ? "var(--gradient-gold)" : "var(--muted)" }}
+      >
+        <div
+          className="absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-all"
+          style={{ right: checked ? "calc(100% - 1.375rem)" : "0.125rem" }}
+        />
+      </div>
+    </button>
   );
 }
