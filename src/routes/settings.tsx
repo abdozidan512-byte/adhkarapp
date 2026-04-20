@@ -4,7 +4,7 @@ import { Bell, Moon, Sun, Smartphone, Trash2, HardDrive, Download, ExternalLink 
 import { PageHeader } from "@/components/PageHeader";
 import { useTheme } from "@/contexts/ThemeContext";
 import { listAudio, deleteAudio, getSetting, saveSetting } from "@/lib/db";
-import { useNotifications } from "@/lib/notifications";
+import { useNotifications, notifTypeLabels, type NotifType } from "@/lib/notifications";
 
 export const Route = createFileRoute("/settings")({
   component: SettingsPage,
