@@ -111,28 +111,45 @@ function SettingsPage() {
 
         {enabled && (
           <div
-            className="space-y-2 rounded-2xl border p-4 text-sm"
+            className="space-y-4 rounded-2xl border p-4 text-sm"
             style={{ background: "var(--gradient-card)" }}
           >
-            <p className="font-bold">تذكير قبل الصلاة</p>
-            <div className="flex gap-2">
-              {[5, 10, 15, 30].map((v) => (
-                <button
-                  key={v}
-                  onClick={() => saveReminder(v)}
-                  className="flex-1 rounded-xl border py-2 text-xs font-bold transition-all"
-                  style={{
-                    background: reminderMin === v ? "var(--gradient-gold)" : "transparent",
-                    color: reminderMin === v ? "var(--gold-foreground)" : "inherit",
-                  }}
-                >
-                  {v} د
-                </button>
-              ))}
+            <div>
+              <p className="mb-2 font-bold">⏱️ مدة التذكير قبل الصلاة</p>
+              <div className="flex gap-2">
+                {[5, 10, 15, 30].map((v) => (
+                  <button
+                    key={v}
+                    onClick={() => saveReminder(v)}
+                    className="flex-1 rounded-xl border py-2 text-xs font-bold transition-all"
+                    style={{
+                      background: reminderMin === v ? "var(--gradient-gold)" : "transparent",
+                      color: reminderMin === v ? "var(--gold-foreground)" : "inherit",
+                    }}
+                  >
+                    {v} د
+                  </button>
+                ))}
+              </div>
             </div>
-            <p className="text-xs text-muted-foreground">
-              يتم تذكيرك بـ: مواقيت الصلاة، أذكار بعد الصلاة، أذكار الصباح والمساء.
-            </p>
+
+            <div className="border-t pt-3">
+              <p className="mb-1 font-bold">🔔 أنواع الإشعارات</p>
+              <p className="mb-3 text-xs text-muted-foreground">
+                ألغِ ما لا تريد استقباله من إشعارات.
+              </p>
+              <div className="space-y-2">
+                {(Object.keys(notifTypeLabels) as NotifType[]).map((t) => (
+                  <NotifToggle
+                    key={t}
+                    title={notifTypeLabels[t].title}
+                    subtitle={notifTypeLabels[t].subtitle}
+                    checked={types[t]}
+                    onChange={() => toggleNotifType(t)}
+                  />
+                ))}
+              </div>
+            </div>
           </div>
         )}
 
