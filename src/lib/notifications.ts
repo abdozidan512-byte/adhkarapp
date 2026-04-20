@@ -3,18 +3,62 @@ import { fetchPrayerTimes, getUserCoords, prayerArabic, type PrayerName } from "
 
 const STORAGE_KEY = "notifications-enabled";
 const SCHEDULED_KEY = "notif-scheduled-day";
+const TYPES_KEY = "notif-types";
+
+export type NotifType =
+  | "prayerReminder"
+  | "prayerTime"
+  | "afterPrayer"
+  | "morning"
+  | "evening";
+
+export type NotifTypes = Record<NotifType, boolean>;
+
+export const defaultNotifTypes: NotifTypes = {
+  prayerReminder: true,
+  prayerTime: true,
+  afterPrayer: true,
+  morning: true,
+  evening: true,
+};
+
+export const notifTypeLabels: Record<NotifType, { title: string; subtitle: string }> = {
+  prayerReminder: { title: "تذكير قبل الصلاة", subtitle: "قبل دخول وقت الصلاة بدقائق" },
+  prayerTime: { title: "حان وقت الصلاة", subtitle: "عند دخول وقت كل صلاة" },
+  afterPrayer: { title: "أذكار بعد الصلاة", subtitle: "تذكير بعد الصلاة بـ 5 دقائق" },
+  morning: { title: "أذكار الصباح", subtitle: "بعد الفجر بنصف ساعة" },
+  evening: { title: "أذكار المساء", subtitle: "عند دخول العصر" },
+};
 
 let timers: number[] = [];
+
+function loadTypes(): NotifTypes {
+  if (typeof localStorage === "undefined") return defaultNotifTypes;
+  try {
+    const raw = localStorage.getItem(TYPES_KEY);
+    if (!raw) return defaultNotifTypes;
+    return { ...defaultNotifTypes, ...JSON.parse(raw) };
+  } catch {
+    return defaultNotifTypes;
+  }
+}
+
+function saveTypes(t: NotifTypes) {
+  if (typeof localStorage === "undefined") return;
+  localStorage.setItem(TYPES_KEY, JSON.stringify(t));
+}
 
 export function useNotifications() {
   const [permission, setPermission] = useState<NotificationPermission>("default");
   const [enabled, setEnabledState] = useState(false);
+  const [types, setTypesState] = useState<NotifTypes>(defaultNotifTypes);
 
   useEffect(() => {
     if (typeof Notification !== "undefined") {
       setPermission(Notification.permission);
     }
     setEnabledState(localStorage.getItem(STORAGE_KEY) === "1");
+    setTypesState(loadTypes());
   }, []);
 
   async function requestPermission() {
@@ -30,7 +74,21 @@ export function useNotifications() {
     if (!v) clearScheduled();
   }
 
-  return { permission, requestPermission, enabled, setEnabled, scheduleAll: scheduleAllNotifications };
+  function setType(type: NotifType, value: boolean) {
+    const next = { ...types, [type]: value };
+    setTypesState(next);
+    saveTypes(next);
+  }
+
+  return {
+    permission,
+    requestPermission,
+    enabled,
+    setEnabled,
+    types,
+    setType,
+    scheduleAll: scheduleAllNotifications,
+  };
 }
 
 function clearScheduled() {
@@ -55,6 +113,8 @@ export async function scheduleAllNotifications(reminderMin = 15) {
   if (typeof Notification === "undefined" || Notification.permission !== "granted") return;
   clearScheduled();
 
+  const types = loadTypes();
+
   try {
     const coords = await getUserCoords();
     const timings = await fetchPrayerTimes(coords);
@@ -66,29 +126,38 @@ export async function scheduleAllNotifications(reminderMin = 15) {
       const prayerDate = new Date(today);
       prayerDate.setHours(h, m, 0, 0);
 
-      // Reminder before prayer
-      const remTime = new Date(prayerDate.getTime() - reminderMin * 60 * 1000);
-      scheduleAt(remTime, `🕌 تذكير: ${prayerArabic[name]}`, `بقي ${reminderMin} دقيقة على ${prayerArabic[name]}`);
+      if (types.prayerReminder) {
+        const remTime = new Date(prayerDate.getTime() - reminderMin * 60 * 1000);
+        scheduleAt(
+          remTime,
+          `🕌 تذكير: ${prayerArabic[name]}`,
+          `بقي ${reminderMin} دقيقة على ${prayerArabic[name]}`
+        );
+      }
 
-      // At prayer time
-      scheduleAt(prayerDate, `🕌 حان وقت ${prayerArabic[name]}`, "حيّ على الصلاة، حيّ على الفلاح");
+      if (types.prayerTime) {
+        scheduleAt(prayerDate, `🕌 حان وقت ${prayerArabic[name]}`, "حيّ على الصلاة، حيّ على الفلاح");
+      }
 
-      // After prayer (5 min later) — azkar reminder
-      const after = new Date(prayerDate.getTime() + 5 * 60 * 1000);
-      scheduleAt(after, "✨ أذكار بعد الصلاة", "لا تنسَ أذكار ما بعد الصلاة");
+      if (types.afterPrayer) {
+        const after = new Date(prayerDate.getTime() + 5 * 60 * 1000);
+        scheduleAt(after, "✨ أذكار بعد الصلاة", "لا تنسَ أذكار ما بعد الصلاة");
+      }
     });
 
-    // Morning azkar — after Fajr + 30 min
-    const [fh, fm] = timings.Fajr.split(":").map(Number);
-    const morning = new Date(today);
-    morning.setHours(fh, fm + 30, 0, 0);
-    scheduleAt(morning, "🌅 أذكار الصباح", "ابدأ يومك بذكر الله");
+    if (types.morning) {
+      const [fh, fm] = timings.Fajr.split(":").map(Number);
+      const morning = new Date(today);
+      morning.setHours(fh, fm + 30, 0, 0);
+      scheduleAt(morning, "🌅 أذكار الصباح", "ابدأ يومك بذكر الله");
+    }
 
-    // Evening azkar — at Asr
-    const [ah, am] = timings.Asr.split(":").map(Number);
-    const evening = new Date(today);
-    evening.setHours(ah, am, 0, 0);
-    scheduleAt(evening, "🌙 أذكار المساء", "اختم نهارك بذكر الله");
+    if (types.evening) {
+      const [ah, am] = timings.Asr.split(":").map(Number);
+      const evening = new Date(today);
+      evening.setHours(ah, am, 0, 0);
+      scheduleAt(evening, "🌙 أذكار المساء", "اختم نهارك بذكر الله");
+    }
 
     localStorage.setItem(SCHEDULED_KEY, today.toDateString());
   } catch (e) {
@@ -103,7 +172,6 @@ function scheduleAt(date: Date, title: string, body: string) {
   timers.push(id);
 }
 
-// Re-schedule when app opens if it's a new day
 export function ensureDailySchedule(reminderMin = 15) {
   if (typeof window === "undefined") return;
   if (localStorage.getItem(STORAGE_KEY) !== "1") return;
