@@ -9,11 +9,19 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
+import { Route as SettingsRouteImport } from './routes/settings'
 import { Route as QiblaRouteImport } from './routes/qibla'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as QuranIndexRouteImport } from './routes/quran.index'
 import { Route as AzkarIndexRouteImport } from './routes/azkar.index'
+import { Route as QuranNumRouteImport } from './routes/quran.$num'
 import { Route as AzkarIdRouteImport } from './routes/azkar.$id'
 
+const SettingsRoute = SettingsRouteImport.update({
+  id: '/settings',
+  path: '/settings',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const QiblaRoute = QiblaRouteImport.update({
   id: '/qibla',
   path: '/qibla',
@@ -24,9 +32,19 @@ const IndexRoute = IndexRouteImport.update({
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const QuranIndexRoute = QuranIndexRouteImport.update({
+  id: '/quran/',
+  path: '/quran/',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const AzkarIndexRoute = AzkarIndexRouteImport.update({
   id: '/azkar/',
   path: '/azkar/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const QuranNumRoute = QuranNumRouteImport.update({
+  id: '/quran/$num',
+  path: '/quran/$num',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AzkarIdRoute = AzkarIdRouteImport.update({
@@ -38,39 +56,80 @@ const AzkarIdRoute = AzkarIdRouteImport.update({
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/qibla': typeof QiblaRoute
+  '/settings': typeof SettingsRoute
   '/azkar/$id': typeof AzkarIdRoute
+  '/quran/$num': typeof QuranNumRoute
   '/azkar/': typeof AzkarIndexRoute
+  '/quran/': typeof QuranIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/qibla': typeof QiblaRoute
+  '/settings': typeof SettingsRoute
   '/azkar/$id': typeof AzkarIdRoute
+  '/quran/$num': typeof QuranNumRoute
   '/azkar': typeof AzkarIndexRoute
+  '/quran': typeof QuranIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/qibla': typeof QiblaRoute
+  '/settings': typeof SettingsRoute
   '/azkar/$id': typeof AzkarIdRoute
+  '/quran/$num': typeof QuranNumRoute
   '/azkar/': typeof AzkarIndexRoute
+  '/quran/': typeof QuranIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/qibla' | '/azkar/$id' | '/azkar/'
+  fullPaths:
+    | '/'
+    | '/qibla'
+    | '/settings'
+    | '/azkar/$id'
+    | '/quran/$num'
+    | '/azkar/'
+    | '/quran/'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/qibla' | '/azkar/$id' | '/azkar'
-  id: '__root__' | '/' | '/qibla' | '/azkar/$id' | '/azkar/'
+  to:
+    | '/'
+    | '/qibla'
+    | '/settings'
+    | '/azkar/$id'
+    | '/quran/$num'
+    | '/azkar'
+    | '/quran'
+  id:
+    | '__root__'
+    | '/'
+    | '/qibla'
+    | '/settings'
+    | '/azkar/$id'
+    | '/quran/$num'
+    | '/azkar/'
+    | '/quran/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   QiblaRoute: typeof QiblaRoute
+  SettingsRoute: typeof SettingsRoute
   AzkarIdRoute: typeof AzkarIdRoute
+  QuranNumRoute: typeof QuranNumRoute
   AzkarIndexRoute: typeof AzkarIndexRoute
+  QuranIndexRoute: typeof QuranIndexRoute
 }
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
+    '/settings': {
+      id: '/settings'
+      path: '/settings'
+      fullPath: '/settings'
+      preLoaderRoute: typeof SettingsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/qibla': {
       id: '/qibla'
       path: '/qibla'
@@ -85,11 +144,25 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/quran/': {
+      id: '/quran/'
+      path: '/quran'
+      fullPath: '/quran/'
+      preLoaderRoute: typeof QuranIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/azkar/': {
       id: '/azkar/'
       path: '/azkar'
       fullPath: '/azkar/'
       preLoaderRoute: typeof AzkarIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/quran/$num': {
+      id: '/quran/$num'
+      path: '/quran/$num'
+      fullPath: '/quran/$num'
+      preLoaderRoute: typeof QuranNumRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/azkar/$id': {
@@ -105,8 +178,11 @@ declare module '@tanstack/react-router' {
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   QiblaRoute: QiblaRoute,
+  SettingsRoute: SettingsRoute,
   AzkarIdRoute: AzkarIdRoute,
+  QuranNumRoute: QuranNumRoute,
   AzkarIndexRoute: AzkarIndexRoute,
+  QuranIndexRoute: QuranIndexRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
