@@ -9,38 +9,75 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
+import { Route as QiblaRouteImport } from './routes/qibla'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as AzkarIndexRouteImport } from './routes/azkar.index'
+import { Route as AzkarIdRouteImport } from './routes/azkar.$id'
 
+const QiblaRoute = QiblaRouteImport.update({
+  id: '/qibla',
+  path: '/qibla',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const AzkarIndexRoute = AzkarIndexRouteImport.update({
+  id: '/azkar/',
+  path: '/azkar/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AzkarIdRoute = AzkarIdRouteImport.update({
+  id: '/azkar/$id',
+  path: '/azkar/$id',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/qibla': typeof QiblaRoute
+  '/azkar/$id': typeof AzkarIdRoute
+  '/azkar/': typeof AzkarIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/qibla': typeof QiblaRoute
+  '/azkar/$id': typeof AzkarIdRoute
+  '/azkar': typeof AzkarIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/qibla': typeof QiblaRoute
+  '/azkar/$id': typeof AzkarIdRoute
+  '/azkar/': typeof AzkarIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/'
+  fullPaths: '/' | '/qibla' | '/azkar/$id' | '/azkar/'
   fileRoutesByTo: FileRoutesByTo
-  to: '/'
-  id: '__root__' | '/'
+  to: '/' | '/qibla' | '/azkar/$id' | '/azkar'
+  id: '__root__' | '/' | '/qibla' | '/azkar/$id' | '/azkar/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  QiblaRoute: typeof QiblaRoute
+  AzkarIdRoute: typeof AzkarIdRoute
+  AzkarIndexRoute: typeof AzkarIndexRoute
 }
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
+    '/qibla': {
+      id: '/qibla'
+      path: '/qibla'
+      fullPath: '/qibla'
+      preLoaderRoute: typeof QiblaRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/': {
       id: '/'
       path: '/'
@@ -48,12 +85,38 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/azkar/': {
+      id: '/azkar/'
+      path: '/azkar'
+      fullPath: '/azkar/'
+      preLoaderRoute: typeof AzkarIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/azkar/$id': {
+      id: '/azkar/$id'
+      path: '/azkar/$id'
+      fullPath: '/azkar/$id'
+      preLoaderRoute: typeof AzkarIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  QiblaRoute: QiblaRoute,
+  AzkarIdRoute: AzkarIdRoute,
+  AzkarIndexRoute: AzkarIndexRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
   ._addFileTypes<FileRouteTypes>()
+
+import type { getRouter } from './router.tsx'
+import type { createStart } from '@tanstack/react-start'
+declare module '@tanstack/react-start' {
+  interface Register {
+    ssr: true
+    router: Awaited<ReturnType<typeof getRouter>>
+  }
+}
