@@ -118,3 +118,22 @@ export async function getCachedAudioKeys(): Promise<Set<string>> {
   const keys = await db.getAllKeys("audio");
   return new Set(keys);
 }
+
+// ===== Reading progress (last-read tracker) =====
+export type ReadingProgress = {
+  surahNumber: number;
+  surahName: string;
+  page: number;
+  totalPages: number;
+  ayah: number;
+  updatedAt: number;
+};
+
+export async function saveReadingProgress(p: ReadingProgress) {
+  await saveSetting("reading-progress", p);
+}
+
+export async function getReadingProgress(): Promise<ReadingProgress | undefined> {
+  return getSetting<ReadingProgress>("reading-progress");
+}
+
