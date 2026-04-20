@@ -1,6 +1,8 @@
 import { Outlet, createRootRoute, HeadContent, Scripts } from "@tanstack/react-router";
+import { useEffect } from "react";
 import { ThemeProvider } from "@/contexts/ThemeContext";
 import { BottomNav } from "@/components/BottomNav";
+import { ensureDailySchedule } from "@/lib/notifications";
 import appCss from "../styles.css?url";
 
 function NotFoundComponent() {
@@ -52,6 +54,9 @@ function RootShell({ children }: { children: React.ReactNode }) {
 }
 
 function RootComponent() {
+  useEffect(() => {
+    ensureDailySchedule();
+  }, []);
   return (
     <ThemeProvider>
       <div className="mx-auto min-h-screen max-w-md pb-24" style={{ paddingBottom: "calc(6rem + env(safe-area-inset-bottom))" }}>
