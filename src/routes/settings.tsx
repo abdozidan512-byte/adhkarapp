@@ -13,7 +13,7 @@ export const Route = createFileRoute("/settings")({
 
 function SettingsPage() {
   const { theme, toggleTheme } = useTheme();
-  const { permission, requestPermission, scheduleAll, enabled, setEnabled } = useNotifications();
+  const { permission, requestPermission, scheduleAll, enabled, setEnabled, types, setType } = useNotifications();
   const [storage, setStorage] = useState<{ count: number; bytes: number }>({ count: 0, bytes: 0 });
   const [reminderMin, setReminderMin] = useState(15);
 
@@ -41,6 +41,14 @@ function SettingsPage() {
     setReminderMin(v);
     await saveSetting("reminderMin", v);
     if (enabled) scheduleAll(v);
+  }
+
+  function toggleNotifType(type: NotifType) {
+    setType(type, !types[type]);
+    if (enabled) {
+      // Re-schedule with new prefs
+      setTimeout(() => scheduleAll(reminderMin), 50);
+    }
   }
 
   async function toggleNotifications() {
