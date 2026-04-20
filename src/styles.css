@@ -100,9 +100,11 @@
   --popover: oklch(0.22 0.025 200);
   --popover-foreground: oklch(0.95 0.015 90);
 
-  --primary: oklch(0.72 0.14 75);
-  --primary-foreground: oklch(0.16 0.02 200);
-  --primary-glow: oklch(0.82 0.13 80);
+  /* Keep primary as deep emerald in dark mode so primary-foreground stays light
+     (used heavily on hero gradients & buttons). Gold is exposed via --gold token. */
+  --primary: oklch(0.55 0.13 160);
+  --primary-foreground: oklch(0.98 0.012 90);
+  --primary-glow: oklch(0.65 0.14 155);
 
   --secondary: oklch(0.28 0.03 200);
   --secondary-foreground: oklch(0.95 0.015 90);
