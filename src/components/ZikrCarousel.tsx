@@ -1,7 +1,41 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, Fragment, type ReactNode } from "react";
 import useEmblaCarousel from "embla-carousel-react";
 import { ChevronLeft, ChevronRight, RefreshCw, Sparkles } from "lucide-react";
 import type { Zikr } from "@/data/azkar";
+
+// Renders text with [[N]] markers replaced by golden numbered circles.
+function renderWithAyahNumbers(text: string): ReactNode {
+  const parts = text.split(/(\[\[\d+\]\])/g);
+  return parts.map((part, i) => {
+    const m = part.match(/^\[\[(\d+)\]\]$/);
+    if (m) {
+      return (
+        <span
+          key={i}
+          className="mx-1 inline-flex h-7 w-7 items-center justify-center rounded-full border align-middle text-[11px] font-bold"
+          style={{
+            background: "var(--gradient-gold)",
+            color: "var(--gold-foreground)",
+            borderColor: "var(--gold)",
+          }}
+        >
+          {m[1]}
+        </span>
+      );
+    }
+    // Preserve newlines
+    return (
+      <Fragment key={i}>
+        {part.split("\n").map((line, j, arr) => (
+          <Fragment key={j}>
+            {line}
+            {j < arr.length - 1 && <br />}
+          </Fragment>
+        ))}
+      </Fragment>
+    );
+  });
+}
 
 export function ZikrCarousel({ items, title }: { items: Zikr[]; title: string }) {
   const [emblaRef, emblaApi] = useEmblaCarousel({
@@ -96,10 +130,10 @@ export function ZikrCarousel({ items, title }: { items: Zikr[]; title: string })
                       className="font-quran text-center"
                       style={{
                         fontSize: zikr.text.length > 200 ? "1.05rem" : zikr.text.length > 100 ? "1.2rem" : "1.4rem",
-                        lineHeight: 2,
+                        lineHeight: 2.2,
                       }}
                     >
-                      {zikr.text}
+                      {renderWithAyahNumbers(zikr.text)}
                     </p>
                     {zikr.fadl && (
                       <div className="mt-5 flex items-start gap-2 rounded-2xl border p-3 text-xs" style={{ background: "color-mix(in oklab, var(--gold) 8%, transparent)", borderColor: "color-mix(in oklab, var(--gold) 30%, transparent)" }}>

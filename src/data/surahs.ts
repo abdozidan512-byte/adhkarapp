@@ -136,12 +136,6 @@ export const reciters = [
     subfolder: "MaherAlMuaiqly128kbps",
     avatar: "📖",
   },
-  {
-    id: "ar.luhaidan",
-    name: "محمد اللحيدان",
-    subfolder: "Muhammad_AlLuhaidan_128kbps",
-    avatar: "🌙",
-  },
 ] as const;
 
 export type ReciterId = typeof reciters[number]["id"];
