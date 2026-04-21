@@ -64,6 +64,28 @@ function RootShell({ children }: { children: React.ReactNode }) {
 function RootComponent() {
   useEffect(() => {
     ensureDailySchedule();
+
+    // تسجيل Service Worker — في الإنتاج فقط، وليس داخل iframe المعاينة
+    if (typeof window === "undefined" || !("serviceWorker" in navigator)) return;
+    let inIframe = false;
+    try {
+      inIframe = window.self !== window.top;
+    } catch {
+      inIframe = true;
+    }
+    const host = window.location.hostname;
+    const isPreview =
+      host.includes("id-preview--") ||
+      host.includes("lovableproject.com") ||
+      host === "localhost" ||
+      host === "127.0.0.1";
+    if (inIframe || isPreview) {
+      navigator.serviceWorker.getRegistrations().then((regs) => {
+        regs.forEach((r) => r.unregister());
+      });
+      return;
+    }
+    navigator.serviceWorker.register("/sw.js").catch(() => undefined);
   }, []);
   return (
     <ThemeProvider>
