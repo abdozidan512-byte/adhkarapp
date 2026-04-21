@@ -25,6 +25,12 @@ export const Route = createRootRoute({
       { charSet: "utf-8" },
       { name: "viewport", content: "width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no" },
       { name: "theme-color", content: "#1a3d2e" },
+      { name: "application-name", content: "نور" },
+      { name: "apple-mobile-web-app-capable", content: "yes" },
+      { name: "apple-mobile-web-app-status-bar-style", content: "black-translucent" },
+      { name: "apple-mobile-web-app-title", content: "نور" },
+      { name: "mobile-web-app-capable", content: "yes" },
+      { name: "format-detection", content: "telephone=no" },
       { title: "نور — أذكار وقرآن ومواقيت الصلاة" },
       { name: "description", content: "تطبيق إسلامي شامل: أذكار الصباح والمساء والنوم، القرآن الكريم بأشهر القراء، مواقيت الصلاة، القبلة." },
       { property: "og:title", content: "نور — أذكار وقرآن ومواقيت الصلاة" },
@@ -64,6 +70,28 @@ function RootShell({ children }: { children: React.ReactNode }) {
 function RootComponent() {
   useEffect(() => {
     ensureDailySchedule();
+
+    // تسجيل Service Worker — في الإنتاج فقط، وليس داخل iframe المعاينة
+    if (typeof window === "undefined" || !("serviceWorker" in navigator)) return;
+    let inIframe = false;
+    try {
+      inIframe = window.self !== window.top;
+    } catch {
+      inIframe = true;
+    }
+    const host = window.location.hostname;
+    const isPreview =
+      host.includes("id-preview--") ||
+      host.includes("lovableproject.com") ||
+      host === "localhost" ||
+      host === "127.0.0.1";
+    if (inIframe || isPreview) {
+      navigator.serviceWorker.getRegistrations().then((regs) => {
+        regs.forEach((r) => r.unregister());
+      });
+      return;
+    }
+    navigator.serviceWorker.register("/sw.js").catch(() => undefined);
   }, []);
   return (
     <ThemeProvider>
