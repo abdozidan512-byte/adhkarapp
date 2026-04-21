@@ -50,6 +50,7 @@ function QuranIndex() {
             key={s.number}
             to="/quran/$num"
             params={{ num: String(s.number) }}
+            search={{ page: undefined }}
             className="flex items-center gap-3 rounded-2xl border p-3 transition-all active:scale-[0.98]"
             style={{ background: "var(--card)" }}
           >
