@@ -71,6 +71,7 @@ function RootShell({ children }: { children: React.ReactNode }) {
 function RootComponent() {
   useEffect(() => {
     ensureDailySchedule();
+    preloadQuranInBackground();
 
     // تسجيل Service Worker — في الإنتاج فقط، وليس داخل iframe المعاينة
     if (typeof window === "undefined" || !("serviceWorker" in navigator)) return;
