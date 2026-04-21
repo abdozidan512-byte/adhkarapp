@@ -62,6 +62,16 @@ export function useNotifications() {
   }, []);
 
   async function requestPermission() {
+    try {
+      const { Capacitor } = await import("@capacitor/core");
+      if (Capacitor.isNativePlatform()) {
+        const { LocalNotifications } = await import("@capacitor/local-notifications");
+        const res = await LocalNotifications.requestPermissions();
+        const granted = res.display === "granted";
+        setPermission(granted ? "granted" : "denied");
+        return granted;
+      }
+    } catch {}
     if (typeof Notification === "undefined") return false;
     const p = await Notification.requestPermission();
     setPermission(p);
@@ -96,21 +106,67 @@ function clearScheduled() {
   timers = [];
 }
 
-function notify(title: string, body: string) {
+async function notify(title: string, body: string) {
+  // داخل APK نستخدم Capacitor فوراً
+  try {
+    const { Capacitor } = await import("@capacitor/core");
+    if (Capacitor.isNativePlatform()) {
+      const { LocalNotifications } = await import("@capacitor/local-notifications");
+      await LocalNotifications.schedule({
+        notifications: [
+          {
+            id: Math.floor(Math.random() * 2147483647),
+            title,
+            body,
+            schedule: { at: new Date(Date.now() + 100) },
+          },
+        ],
+      });
+      return;
+    }
+  } catch {}
   if (typeof Notification === "undefined" || Notification.permission !== "granted") return;
   try {
-    new Notification(title, {
-      body,
-      icon: "/icon-192.png",
-      badge: "/icon-192.png",
-      tag: title,
-    });
+    new Notification(title, { body, icon: "/icon-192.png", badge: "/icon-192.png", tag: title });
   } catch {}
+}
+
+async function scheduleNative(date: Date, title: string, body: string): Promise<boolean> {
+  try {
+    const { Capacitor } = await import("@capacitor/core");
+    if (!Capacitor.isNativePlatform()) return false;
+    const { LocalNotifications } = await import("@capacitor/local-notifications");
+    await LocalNotifications.schedule({
+      notifications: [
+        {
+          id: Math.floor(Math.random() * 2147483647),
+          title,
+          body,
+          schedule: { at: date, allowWhileIdle: true },
+        },
+      ],
+    });
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 export async function scheduleAllNotifications(reminderMin = 15) {
   if (typeof window === "undefined") return;
-  if (typeof Notification === "undefined" || Notification.permission !== "granted") return;
+  // داخل APK نتخطى فحص Notification (المتصفح)
+  let isNative = false;
+  try {
+    const { Capacitor } = await import("@capacitor/core");
+    isNative = Capacitor.isNativePlatform();
+    if (isNative) {
+      const { LocalNotifications } = await import("@capacitor/local-notifications");
+      await LocalNotifications.cancel({
+        notifications: (await LocalNotifications.getPending()).notifications,
+      });
+    }
+  } catch {}
+  if (!isNative && (typeof Notification === "undefined" || Notification.permission !== "granted")) return;
   clearScheduled();
 
   const types = loadTypes();
@@ -168,14 +224,24 @@ export async function scheduleAllNotifications(reminderMin = 15) {
 function scheduleAt(date: Date, title: string, body: string) {
   const ms = date.getTime() - Date.now();
   if (ms <= 0 || ms > 24 * 60 * 60 * 1000) return;
-  const id = window.setTimeout(() => notify(title, body), ms);
-  timers.push(id);
+  // جرّب جدولة أصلية أولاً (تعمل حتى لو كان التطبيق مغلقاً مثل واتساب)
+  scheduleNative(date, title, body).then((ok) => {
+    if (!ok) {
+      const id = window.setTimeout(() => notify(title, body), ms);
+      timers.push(id);
+    }
+  });
 }
 
-export function ensureDailySchedule(reminderMin = 15) {
+export async function ensureDailySchedule(reminderMin = 15) {
   if (typeof window === "undefined") return;
   if (localStorage.getItem(STORAGE_KEY) !== "1") return;
-  if (typeof Notification === "undefined" || Notification.permission !== "granted") return;
+  let isNative = false;
+  try {
+    const { Capacitor } = await import("@capacitor/core");
+    isNative = Capacitor.isNativePlatform();
+  } catch {}
+  if (!isNative && (typeof Notification === "undefined" || Notification.permission !== "granted")) return;
   const last = localStorage.getItem(SCHEDULED_KEY);
   if (last !== new Date().toDateString()) {
     scheduleAllNotifications(reminderMin);
