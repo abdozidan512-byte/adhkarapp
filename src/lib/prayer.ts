@@ -36,6 +36,11 @@ function todayKey(d = new Date()) {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
 
+function fmt(d: Date) {
+  return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+}
+
+// حساب مواقيت الصلاة محليّاً بدون إنترنت باستخدام مكتبة adhan (طريقة أم القرى)
 export async function fetchPrayerTimes(coords: Coords, date = new Date()) {
   const key = todayKey(date);
   const cached = await getPrayerTimes(key);
@@ -43,21 +48,23 @@ export async function fetchPrayerTimes(coords: Coords, date = new Date()) {
     return cached.timings;
   }
 
-  const dd = String(date.getDate()).padStart(2, "0");
-  const mm = String(date.getMonth() + 1).padStart(2, "0");
-  const yyyy = date.getFullYear();
+  const adhan = await import("adhan");
+  const params = adhan.CalculationMethod.UmmAlQura();
+  params.madhab = adhan.Madhab.Shafi;
+  const coordinates = new adhan.Coordinates(coords.lat, coords.lng);
+  const times = new adhan.PrayerTimes(coordinates, date, params);
 
-  try {
-    const url = `https://api.aladhan.com/v1/timings/${dd}-${mm}-${yyyy}?latitude=${coords.lat}&longitude=${coords.lng}&method=4`;
-    const res = await fetch(url);
-    const json = await res.json();
-    const timings = json.data.timings as Record<string, string>;
-    await savePrayerTimes(key, coords.lat, coords.lng, timings);
-    return timings;
-  } catch (e) {
-    if (cached) return cached.timings;
-    throw e;
-  }
+  const timings: Record<string, string> = {
+    Fajr: fmt(times.fajr),
+    Sunrise: fmt(times.sunrise),
+    Dhuhr: fmt(times.dhuhr),
+    Asr: fmt(times.asr),
+    Maghrib: fmt(times.maghrib),
+    Isha: fmt(times.isha),
+  };
+
+  await savePrayerTimes(key, coords.lat, coords.lng, timings);
+  return timings;
 }
 
 function parseTime(timeStr: string, base = new Date()): Date {

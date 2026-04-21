@@ -3,6 +3,7 @@ import { useEffect } from "react";
 import { ThemeProvider } from "@/contexts/ThemeContext";
 import { BottomNav } from "@/components/BottomNav";
 import { ensureDailySchedule } from "@/lib/notifications";
+import { preloadQuranInBackground } from "@/lib/preload";
 import appCss from "../styles.css?url";
 
 function NotFoundComponent() {
@@ -70,6 +71,7 @@ function RootShell({ children }: { children: React.ReactNode }) {
 function RootComponent() {
   useEffect(() => {
     ensureDailySchedule();
+    preloadQuranInBackground();
 
     // تسجيل Service Worker — في الإنتاج فقط، وليس داخل iframe المعاينة
     if (typeof window === "undefined" || !("serviceWorker" in navigator)) return;
