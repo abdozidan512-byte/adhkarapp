@@ -3,6 +3,7 @@ import { useEffect } from "react";
 import { ThemeProvider } from "@/contexts/ThemeContext";
 import { BottomNav } from "@/components/BottomNav";
 import { ensureDailySchedule } from "@/lib/notifications";
+import { preloadQuranInBackground } from "@/lib/preload";
 import appCss from "../styles.css?url";
 
 function NotFoundComponent() {
