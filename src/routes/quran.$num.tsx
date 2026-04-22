@@ -397,6 +397,7 @@ function SurahReader() {
                           <button
                             onClick={(e) => {
                               e.stopPropagation();
+                              if (isSurahMode) return;
                               if (isPlaying) stopPlay();
                               else playAyah(a.numberInSurah);
                             }}
@@ -405,27 +406,30 @@ function SurahReader() {
                               background: "var(--gradient-gold)",
                               color: "var(--gold-foreground)",
                               borderColor: "var(--gold)",
+                              opacity: isSurahMode ? 0.7 : 1,
                             }}
                             aria-label={`آية ${a.numberInSurah}`}
                           >
                             {a.numberInSurah}
                           </button>{" "}
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              downloadAyah(a.numberInSurah);
-                            }}
-                            className="inline-flex h-5 w-5 items-center justify-center rounded-full text-muted-foreground hover:text-primary"
-                            aria-label="تحميل الآية"
-                          >
-                            {downloading?.ayah === a.numberInSurah ? (
-                              <Loader2 className="h-3 w-3 animate-spin" />
-                            ) : cached ? (
-                              <Check className="h-3 w-3" style={{ color: "var(--gold)" }} />
-                            ) : (
-                              <Download className="h-3 w-3" />
-                            )}
-                          </button>{" "}
+                          {!isSurahMode && (
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                downloadAyah(a.numberInSurah);
+                              }}
+                              className="inline-flex h-5 w-5 items-center justify-center rounded-full text-muted-foreground hover:text-primary"
+                              aria-label="تحميل الآية"
+                            >
+                              {downloading?.ayah === a.numberInSurah ? (
+                                <Loader2 className="h-3 w-3 animate-spin" />
+                              ) : cached ? (
+                                <Check className="h-3 w-3" style={{ color: "var(--gold)" }} />
+                              ) : (
+                                <Download className="h-3 w-3" />
+                              )}
+                            </button>
+                          )}{" "}
                         </span>
                       );
                     })}
