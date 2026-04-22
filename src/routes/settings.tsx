@@ -13,7 +13,7 @@ export const Route = createFileRoute("/settings")({
 
 function SettingsPage() {
   const { theme, toggleTheme } = useTheme();
-  const { permission, requestPermission, scheduleAll, enabled, setEnabled, types, setType } = useNotifications();
+  const { permission, requestPermission, scheduleAll, enabled, setEnabled, types, setType, testNotification } = useNotifications();
   const [storage, setStorage] = useState<{ count: number; bytes: number }>({ count: 0, bytes: 0 });
   const [reminderMin, setReminderMin] = useState(15);
 
