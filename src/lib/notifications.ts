@@ -98,6 +98,7 @@ export function useNotifications() {
     types,
     setType,
     scheduleAll: scheduleAllNotifications,
+    testNotification,
   };
 }
 
@@ -106,8 +107,9 @@ function clearScheduled() {
   timers = [];
 }
 
-async function notify(title: string, body: string) {
-  // داخل APK نستخدم Capacitor فوراً
+// إشعار فوري — يستخدم Service Worker إن أمكن (أفضل لأنه يعمل حتى لو أُغلقت نافذة التطبيق)
+async function showNotificationNow(title: string, body: string) {
+  // Capacitor (APK)
   try {
     const { Capacitor } = await import("@capacitor/core");
     if (Capacitor.isNativePlatform()) {
@@ -125,12 +127,31 @@ async function notify(title: string, body: string) {
       return;
     }
   } catch {}
+
   if (typeof Notification === "undefined" || Notification.permission !== "granted") return;
+
+  // PWA: استخدم SW إن أمكن
+  if ("serviceWorker" in navigator) {
+    try {
+      const reg = await navigator.serviceWorker.ready;
+      await reg.showNotification(title, {
+        body,
+        icon: "/icon-192.png",
+        badge: "/icon-192.png",
+        tag: title,
+        // @ts-expect-error - vibrate is supported on Android
+        vibrate: [200, 100, 200],
+      });
+      return;
+    } catch {}
+  }
+
   try {
     new Notification(title, { body, icon: "/icon-192.png", badge: "/icon-192.png", tag: title });
   } catch {}
 }
 
+// جدولة أصلية على Capacitor
 async function scheduleNative(date: Date, title: string, body: string): Promise<boolean> {
   try {
     const { Capacitor } = await import("@capacitor/core");
@@ -152,22 +173,56 @@ async function scheduleNative(date: Date, title: string, body: string): Promise<
   }
 }
 
+// جدولة عبر Notification Triggers API (Chrome على Android — تعمل حتى لو أُغلق التطبيق)
+async function scheduleViaTrigger(date: Date, title: string, body: string): Promise<boolean> {
+  if (!("serviceWorker" in navigator)) return false;
+  if (typeof (window as any).TimestampTrigger === "undefined") return false;
+  try {
+    const reg = await navigator.serviceWorker.ready;
+    await reg.showNotification(title, {
+      body,
+      icon: "/icon-192.png",
+      badge: "/icon-192.png",
+      tag: `${title}-${date.getTime()}`,
+      // @ts-expect-error - showTrigger is experimental (Chrome only)
+      showTrigger: new (window as any).TimestampTrigger(date.getTime()),
+      // @ts-expect-error
+      vibrate: [200, 100, 200],
+    });
+    return true;
+  } catch (e) {
+    console.warn("TimestampTrigger failed:", e);
+    return false;
+  }
+}
+
 export async function scheduleAllNotifications(reminderMin = 15) {
   if (typeof window === "undefined") return;
-  // داخل APK نتخطى فحص Notification (المتصفح)
+
   let isNative = false;
   try {
     const { Capacitor } = await import("@capacitor/core");
     isNative = Capacitor.isNativePlatform();
     if (isNative) {
       const { LocalNotifications } = await import("@capacitor/local-notifications");
-      await LocalNotifications.cancel({
-        notifications: (await LocalNotifications.getPending()).notifications,
-      });
+      const pending = await LocalNotifications.getPending();
+      if (pending.notifications.length > 0) {
+        await LocalNotifications.cancel({ notifications: pending.notifications });
+      }
     }
   } catch {}
+
   if (!isNative && (typeof Notification === "undefined" || Notification.permission !== "granted")) return;
   clearScheduled();
+
+  // امسح إشعارات SW المجدولة سابقاً
+  if (!isNative && "serviceWorker" in navigator) {
+    try {
+      const reg = await navigator.serviceWorker.ready;
+      const existing = await reg.getNotifications({ includeTriggered: false } as any);
+      existing.forEach((n) => n.close());
+    } catch {}
+  }
 
   const types = loadTypes();
 
@@ -224,13 +279,21 @@ export async function scheduleAllNotifications(reminderMin = 15) {
 function scheduleAt(date: Date, title: string, body: string) {
   const ms = date.getTime() - Date.now();
   if (ms <= 0 || ms > 24 * 60 * 60 * 1000) return;
-  // جرّب جدولة أصلية أولاً (تعمل حتى لو كان التطبيق مغلقاً مثل واتساب)
-  scheduleNative(date, title, body).then((ok) => {
-    if (!ok) {
-      const id = window.setTimeout(() => notify(title, body), ms);
-      timers.push(id);
-    }
+  // 1) جرّب Capacitor (APK) أولاً
+  scheduleNative(date, title, body).then(async (ok) => {
+    if (ok) return;
+    // 2) جرّب Notification Triggers (Chrome Android — يعمل بدون فتح التطبيق)
+    const triggered = await scheduleViaTrigger(date, title, body);
+    if (triggered) return;
+    // 3) احتياط: setTimeout (يعمل فقط ما دام التطبيق مفتوحاً)
+    const id = window.setTimeout(() => showNotificationNow(title, body), ms);
+    timers.push(id);
   });
+}
+
+// إشعار اختبار فوري — للتحقق من أن الإشعارات تعمل
+export async function testNotification() {
+  await showNotificationNow("🔔 اختبار الإشعار", "إشعارات نور تعمل بنجاح، بارك الله فيك");
 }
 
 export async function ensureDailySchedule(reminderMin = 15) {
