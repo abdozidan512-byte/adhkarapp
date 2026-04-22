@@ -123,19 +123,33 @@ export const surahs: Surah[] = [
   { number: 114, name: "الناس", englishName: "An-Nas", revelationType: "Meccan", numberOfAyahs: 6 },
 ];
 
+// القراء: نوعان من المصدر
+//  - "ayah": يدعم تشغيل/تحميل آية بآية (everyayah.com)
+//  - "surah": سورة كاملة فقط (mp3quran.net)
 export const reciters = [
   {
     id: "ar.yasser",
     name: "ياسر الدوسري",
     subfolder: "Yasser_Ad-Dussary_128kbps",
+    mode: "ayah",
     avatar: "🕌",
   },
   {
     id: "ar.maher",
     name: "ماهر المعيقلي",
     subfolder: "MaherAlMuaiqly128kbps",
+    mode: "ayah",
     avatar: "📖",
+  },
+  {
+    id: "ar.luhaidan",
+    name: "محمد اللحيدان",
+    // sources: https://server8.mp3quran.net/lhdan/{001}.mp3
+    surahBaseUrl: "https://server8.mp3quran.net/lhdan/",
+    mode: "surah",
+    avatar: "🌙",
   },
 ] as const;
 
 export type ReciterId = typeof reciters[number]["id"];
+export type Reciter = typeof reciters[number];
