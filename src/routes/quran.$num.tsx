@@ -3,7 +3,17 @@ import { useEffect, useRef, useState } from "react";
 import useEmblaCarousel from "embla-carousel-react";
 import { ChevronRight, ZoomIn, ZoomOut, Play, Pause, Download, Check, Loader2, Volume2 } from "lucide-react";
 import { surahs, reciters, type ReciterId } from "@/data/surahs";
-import { fetchSurahText, getAyahAudioUrl, downloadAyahAudio, getAyahAudioBlob, audioKey } from "@/lib/quran-api";
+import {
+  fetchSurahText,
+  getAyahAudioUrl,
+  downloadAyahAudio,
+  getAyahAudioBlob,
+  audioKey,
+  getReciter,
+  getFullSurahAudioUrl,
+  getFullSurahBlob,
+  downloadFullSurah,
+} from "@/lib/quran-api";
 import { getCachedAudioKeys, saveReadingProgress } from "@/lib/db";
 import { cn } from "@/lib/utils";
 
