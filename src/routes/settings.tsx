@@ -150,6 +150,18 @@ function SettingsPage() {
                 ))}
               </div>
             </div>
+
+            <button
+              onClick={testNotification}
+              className="w-full rounded-xl border-2 border-dashed py-2.5 text-xs font-bold transition-all hover:bg-muted"
+              style={{ borderColor: "var(--gold)", color: "var(--gold)" }}
+            >
+              🔔 إرسال إشعار اختبار الآن
+            </button>
+
+            <p className="text-[11px] text-muted-foreground">
+              💡 لضمان وصول الإشعارات حتى مع غلق التطبيق: ثبّت التطبيق على الشاشة الرئيسية، وفعّل الإشعارات من إعدادات الجوال.
+            </p>
           </div>
         )}
 
