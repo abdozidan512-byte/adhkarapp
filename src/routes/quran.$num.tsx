@@ -122,6 +122,9 @@ function SurahReader() {
     });
   }, [page, ayahs, pages.length, meta.number, meta.name]);
 
+  const currentReciter = getReciter(reciter);
+  const isSurahMode = currentReciter?.mode === "surah";
+
   async function playAyah(ayah: number) {
     if (audioRef.current) {
       audioRef.current.pause();
@@ -135,12 +138,15 @@ function SurahReader() {
       src = URL.createObjectURL(blob);
     } else {
       src = getAyahAudioUrl(reciter, meta.number, ayah);
+      if (!src) {
+        setPlaying(null);
+        return;
+      }
     }
 
     const audio = new Audio(src);
     audioRef.current = audio;
     audio.onended = () => {
-      // play next from queue
       const next = playQueueRef.current.shift();
       if (next !== undefined) {
         playAyah(next);
@@ -155,6 +161,31 @@ function SurahReader() {
     audio.play().catch(() => setPlaying(null));
   }
 
+  async function playFullSurahFile() {
+    // تشغيل ملف السورة الكاملة (مفيد للقارئ "surah" مثل اللحيدان)
+    if (audioRef.current) {
+      audioRef.current.pause();
+      audioRef.current = null;
+    }
+    setPlaying(-1); // -1 = full surah
+    let src: string;
+    const blob = await getFullSurahBlob(reciter, meta.number);
+    if (blob) {
+      src = URL.createObjectURL(blob);
+    } else {
+      src = getFullSurahAudioUrl(reciter, meta.number);
+      if (!src) {
+        setPlaying(null);
+        return;
+      }
+    }
+    const audio = new Audio(src);
+    audioRef.current = audio;
+    audio.onended = () => setPlaying(null);
+    audio.onerror = () => setPlaying(null);
+    audio.play().catch(() => setPlaying(null));
+  }
+
   function stopPlay() {
     audioRef.current?.pause();
     audioRef.current = null;
@@ -163,6 +194,10 @@ function SurahReader() {
   }
 
   function playFullSurah() {
+    if (isSurahMode) {
+      playFullSurahFile();
+      return;
+    }
     if (!ayahs) return;
     const list = ayahs.map((a) => a.numberInSurah);
     const first = list.shift()!;
@@ -172,6 +207,11 @@ function SurahReader() {
 
   function playSelected() {
     if (selectedAyahs.size === 0) return;
+    if (isSurahMode) {
+      // في وضع السورة الكاملة لا يمكن تشغيل آيات منفردة — شغّل الكامل
+      playFullSurahFile();
+      return;
+    }
     const list = Array.from(selectedAyahs).sort((a, b) => a - b);
     const first = list.shift()!;
     playQueueRef.current = list;
@@ -179,6 +219,7 @@ function SurahReader() {
   }
 
   async function downloadAyah(ayah: number) {
+    if (isSurahMode) return; // غير مدعوم
     setDownloading({ ayah, pct: 0 });
     try {
       await downloadAyahAudio(reciter, meta.number, ayah, (pct) => setDownloading({ ayah, pct }));
@@ -194,10 +235,15 @@ function SurahReader() {
     if (!ayahs) return;
     setDownloading({ ayah: "all", pct: 0 });
     try {
-      for (let i = 0; i < ayahs.length; i++) {
-        const a = ayahs[i].numberInSurah;
-        await downloadAyahAudio(reciter, meta.number, a);
-        setDownloading({ ayah: "all", pct: Math.round(((i + 1) / ayahs.length) * 100) });
+      if (isSurahMode) {
+        // تحميل ملف السورة الكاملة دفعة واحدة
+        await downloadFullSurah(reciter, meta.number, (pct) => setDownloading({ ayah: "all", pct }));
+      } else {
+        for (let i = 0; i < ayahs.length; i++) {
+          const a = ayahs[i].numberInSurah;
+          await downloadAyahAudio(reciter, meta.number, a);
+          setDownloading({ ayah: "all", pct: Math.round(((i + 1) / ayahs.length) * 100) });
+        }
       }
     } catch (e) {
       console.error(e);
