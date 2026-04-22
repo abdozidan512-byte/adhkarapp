@@ -70,3 +70,20 @@ self.addEventListener("fetch", (event) => {
     })
   );
 });
+
+// عند الضغط على إشعار: افتح التطبيق أو ركّز على نافذته
+self.addEventListener("notificationclick", (event) => {
+  event.notification.close();
+  event.waitUntil(
+    (async () => {
+      const all = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
+      for (const c of all) {
+        if ("focus" in c) {
+          await c.focus();
+          return;
+        }
+      }
+      if (self.clients.openWindow) await self.clients.openWindow("/");
+    })()
+  );
+});
