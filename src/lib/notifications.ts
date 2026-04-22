@@ -184,11 +184,9 @@ async function scheduleViaTrigger(date: Date, title: string, body: string): Prom
       icon: "/icon-192.png",
       badge: "/icon-192.png",
       tag: `${title}-${date.getTime()}`,
-      // @ts-expect-error - showTrigger is experimental (Chrome only)
       showTrigger: new (window as any).TimestampTrigger(date.getTime()),
-      // @ts-expect-error
       vibrate: [200, 100, 200],
-    });
+    } as any);
     return true;
   } catch (e) {
     console.warn("TimestampTrigger failed:", e);
