@@ -1,5 +1,5 @@
 // Service Worker لتطبيق نور — يفعّل العمل دون إنترنت ويرفع تقييم PWA
-const CACHE_VERSION = "noor-v1";
+const CACHE_VERSION = "noor-v3";
 const STATIC_CACHE = `${CACHE_VERSION}-static`;
 const RUNTIME_CACHE = `${CACHE_VERSION}-runtime`;
 
