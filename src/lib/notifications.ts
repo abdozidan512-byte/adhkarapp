@@ -139,9 +139,8 @@ async function showNotificationNow(title: string, body: string) {
         icon: "/icon-192.png",
         badge: "/icon-192.png",
         tag: title,
-        // @ts-expect-error - vibrate is supported on Android
         vibrate: [200, 100, 200],
-      });
+      } as any);
       return;
     } catch {}
   }
