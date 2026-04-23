@@ -3,26 +3,47 @@ import { reciters, type ReciterId } from "@/data/surahs";
 
 export type Ayah = { numberInSurah: number; text: string };
 
-// أنماط البسملة المختلفة كما تردنا من المصادر (مع/بدون تشكيل وفراغات)
-const BISMILLAH_PATTERNS = [
-  /^\s*بِسْمِ\s+ٱللَّهِ\s+ٱلرَّحْمَٰنِ\s+ٱلرَّحِيمِ\s*/,
-  /^\s*بِسْمِ\s+اللَّهِ\s+الرَّحْمَٰنِ\s+الرَّحِيمِ\s*/,
-  /^\s*بِسْمِ\s+ٱللّٰهِ\s+ٱلرَّحْمٰنِ\s+ٱلرَّحِيمِ\s*/,
-  /^\s*بسم\s+الله\s+الرحمن\s+الرحيم\s*/,
-];
+// إزالة البسملة من بداية الآية الأولى لأي سورة
+// نطبّق المطابقة على النص بعد تجريد التشكيل والمسافات حتى نتعامل مع كل المصادر
+const BISMILLAH_NORMALIZED = "بسماللهالرحمنالرحيم";
+
+// محارف التشكيل العربي + التطويل
+const ARABIC_DIACRITICS = /[\u0610-\u061A\u064B-\u065F\u0670\u06D6-\u06ED\u0640]/g;
+
+function normalizeArabic(text: string): string {
+  return text
+    .replace(ARABIC_DIACRITICS, "")
+    .replace(/\s+/g, "")
+    // توحيد ألف الوصل والمد مع الألف العادية
+    .replace(/[ٱآإأ]/g, "ا")
+    // توحيد رسم "الله"
+    .replace(/ٰ/g, "");
+}
 
 function stripLeadingBismillah(text: string): string {
-  for (const re of BISMILLAH_PATTERNS) {
-    if (re.test(text)) return text.replace(re, "").trim();
+  // نمشي حرفاً بحرف على النص الأصلي ونحاول نطابق البسملة المُطبَّعة
+  let consumed = 0;
+  let normalizedSoFar = "";
+  while (consumed < text.length && normalizedSoFar.length < BISMILLAH_NORMALIZED.length) {
+    consumed++;
+    normalizedSoFar = normalizeArabic(text.slice(0, consumed));
+    if (!BISMILLAH_NORMALIZED.startsWith(normalizedSoFar)) {
+      // لا تبدأ ببسملة
+      return text;
+    }
+  }
+  if (normalizedSoFar === BISMILLAH_NORMALIZED) {
+    return text.slice(consumed).replace(/^[\s\u0600-\u061F]+/, "").trim();
   }
   return text;
 }
 
 export async function fetchSurahText(surahNumber: number): Promise<Ayah[]> {
+  const shouldStrip = surahNumber !== 1 && surahNumber !== 9;
+
   const cached = await getSurah(surahNumber);
   if (cached) {
-    // تنظيف الكاش القديم الذي قد يحتوي على بسملة مكررة في الآية الأولى
-    if (surahNumber !== 1 && surahNumber !== 9 && cached.ayahs.length > 0) {
+    if (shouldStrip && cached.ayahs.length > 0) {
       const first = cached.ayahs[0];
       const cleaned = stripLeadingBismillah(first.text);
       if (cleaned !== first.text) {
@@ -37,8 +58,7 @@ export async function fetchSurahText(surahNumber: number): Promise<Ayah[]> {
   const json = await res.json();
   const ayahs: Ayah[] = json.data.ayahs.map((a: any, idx: number) => {
     let text: string = a.text;
-    // إزالة البسملة من بداية الآية الأولى لكل السور ما عدا الفاتحة (1) والتوبة (9)
-    if (idx === 0 && surahNumber !== 1 && surahNumber !== 9) {
+    if (idx === 0 && shouldStrip) {
       text = stripLeadingBismillah(text);
     }
     return { numberInSurah: a.numberInSurah, text };
