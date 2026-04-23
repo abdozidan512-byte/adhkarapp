@@ -41,6 +41,15 @@ async function getReminderMinutes(fallback = 15) {
   return (await getSetting<number>("reminderMin")) ?? fallback;
 }
 
+async function getServiceWorkerRegistration() {
+  if (typeof window === "undefined" || !("serviceWorker" in navigator)) return null;
+  try {
+    return (await navigator.serviceWorker.getRegistration()) ?? null;
+  } catch {
+    return null;
+  }
+}
+
 function loadTypes(): NotifTypes {
   if (typeof localStorage === "undefined") return defaultNotifTypes;
   try {
@@ -142,15 +151,17 @@ async function showNotificationNow(title: string, body: string) {
   // PWA: استخدم SW إن أمكن
   if ("serviceWorker" in navigator) {
     try {
-      const reg = await navigator.serviceWorker.ready;
-      await reg.showNotification(title, {
-        body,
-        icon: "/icon-192.png",
-        badge: "/icon-192.png",
-        tag: title,
-        vibrate: [200, 100, 200],
-      } as any);
-      return;
+      const reg = await getServiceWorkerRegistration();
+      if (reg) {
+        await reg.showNotification(title, {
+          body,
+          icon: "/icon-192.png",
+          badge: "/icon-192.png",
+          tag: title,
+          vibrate: [200, 100, 200],
+        } as any);
+        return;
+      }
     } catch {}
   }
 
@@ -186,7 +197,8 @@ async function scheduleViaTrigger(date: Date, title: string, body: string): Prom
   if (!("serviceWorker" in navigator)) return false;
   if (typeof (window as any).TimestampTrigger === "undefined") return false;
   try {
-    const reg = await navigator.serviceWorker.ready;
+    const reg = await getServiceWorkerRegistration();
+    if (!reg) return false;
     await reg.showNotification(title, {
       body,
       icon: "/icon-192.png",
@@ -226,9 +238,11 @@ export async function scheduleAllNotifications(reminderMin = 15) {
   // امسح إشعارات SW المجدولة سابقاً
   if (!isNative && "serviceWorker" in navigator) {
     try {
-      const reg = await navigator.serviceWorker.ready;
-      const existing = await reg.getNotifications({ includeTriggered: false } as any);
-      existing.forEach((n) => n.close());
+      const reg = await getServiceWorkerRegistration();
+      if (reg) {
+        const existing = await reg.getNotifications({ includeTriggered: false } as any);
+        existing.forEach((n) => n.close());
+      }
     } catch {}
   }
 
