@@ -5,6 +5,7 @@ import { fetchPrayerTimes, getUserCoords, prayerArabic, type PrayerName } from "
 const STORAGE_KEY = "notifications-enabled";
 const SCHEDULED_KEY = "notif-scheduled-day";
 const TYPES_KEY = "notif-types";
+const BACKGROUND_SCHEDULE_DAYS = 7;
 
 export type NotifType =
   | "prayerReminder"
@@ -48,6 +49,23 @@ async function getServiceWorkerRegistration() {
   } catch {
     return null;
   }
+}
+
+function getScheduleKey(date: Date) {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+}
+
+function addDays(base: Date, days: number) {
+  const next = new Date(base);
+  next.setDate(next.getDate() + days);
+  return next;
+}
+
+function buildPrayerDate(time: string, baseDate: Date) {
+  const [h, m] = time.split(":").map(Number);
+  const next = new Date(baseDate);
+  next.setHours(h, m, 0, 0);
+  return next;
 }
 
 function loadTypes(): NotifTypes {
@@ -250,54 +268,54 @@ export async function scheduleAllNotifications(reminderMin = 15) {
 
   try {
     const coords = await getUserCoords();
-    const timings = await fetchPrayerTimes(coords);
     const today = new Date();
-
+    const supportsBackgroundScheduling = isNative || supportsTimestampTrigger();
+    const daysToSchedule = supportsBackgroundScheduling ? BACKGROUND_SCHEDULE_DAYS : 1;
     const jobs: Promise<ScheduleResult>[] = [];
     const order: PrayerName[] = ["Fajr", "Dhuhr", "Asr", "Maghrib", "Isha"];
-    order.forEach((name) => {
-      const [h, m] = timings[name].split(":").map(Number);
-      const prayerDate = new Date(today);
-      prayerDate.setHours(h, m, 0, 0);
 
-      if (types.prayerReminder) {
-        const remTime = new Date(prayerDate.getTime() - reminderMin * 60 * 1000);
-        jobs.push(
-          scheduleAt(
-            remTime,
-            `🕌 تذكير: ${prayerArabic[name]}`,
-            `بقي ${reminderMin} دقيقة على ${prayerArabic[name]}`
-          )
-        );
+    for (let dayOffset = 0; dayOffset < daysToSchedule; dayOffset += 1) {
+      const scheduleDate = addDays(today, dayOffset);
+      const timings = await fetchPrayerTimes(coords, scheduleDate);
+
+      order.forEach((name) => {
+        const prayerDate = buildPrayerDate(timings[name], scheduleDate);
+
+        if (types.prayerReminder) {
+          const remTime = new Date(prayerDate.getTime() - reminderMin * 60 * 1000);
+          jobs.push(
+            scheduleAt(
+              remTime,
+              `🕌 تذكير: ${prayerArabic[name]}`,
+              `بقي ${reminderMin} دقيقة على ${prayerArabic[name]}`
+            )
+          );
+        }
+
+        if (types.prayerTime) {
+          jobs.push(scheduleAt(prayerDate, `🕌 حان وقت ${prayerArabic[name]}`, "حيّ على الصلاة، حيّ على الفلاح"));
+        }
+
+        if (types.afterPrayer) {
+          const after = new Date(prayerDate.getTime() + 5 * 60 * 1000);
+          jobs.push(scheduleAt(after, "✨ أذكار بعد الصلاة", "لا تنسَ أذكار ما بعد الصلاة"));
+        }
+      });
+
+      if (types.morning) {
+        const morning = new Date(buildPrayerDate(timings.Fajr, scheduleDate).getTime() + 30 * 60 * 1000);
+        jobs.push(scheduleAt(morning, "🌅 أذكار الصباح", "ابدأ يومك بذكر الله"));
       }
 
-      if (types.prayerTime) {
-        jobs.push(scheduleAt(prayerDate, `🕌 حان وقت ${prayerArabic[name]}`, "حيّ على الصلاة، حيّ على الفلاح"));
+      if (types.evening) {
+        const evening = buildPrayerDate(timings.Asr, scheduleDate);
+        jobs.push(scheduleAt(evening, "🌙 أذكار المساء", "اختم نهارك بذكر الله"));
       }
-
-      if (types.afterPrayer) {
-        const after = new Date(prayerDate.getTime() + 5 * 60 * 1000);
-        jobs.push(scheduleAt(after, "✨ أذكار بعد الصلاة", "لا تنسَ أذكار ما بعد الصلاة"));
-      }
-    });
-
-    if (types.morning) {
-      const [fh, fm] = timings.Fajr.split(":").map(Number);
-      const morning = new Date(today);
-      morning.setHours(fh, fm + 30, 0, 0);
-      jobs.push(scheduleAt(morning, "🌅 أذكار الصباح", "ابدأ يومك بذكر الله"));
-    }
-
-    if (types.evening) {
-      const [ah, am] = timings.Asr.split(":").map(Number);
-      const evening = new Date(today);
-      evening.setHours(ah, am, 0, 0);
-      jobs.push(scheduleAt(evening, "🌙 أذكار المساء", "اختم نهارك بذكر الله"));
     }
 
     const results = await Promise.all(jobs);
 
-    localStorage.setItem(SCHEDULED_KEY, today.toDateString());
+    localStorage.setItem(SCHEDULED_KEY, getScheduleKey(addDays(today, daysToSchedule - 1)));
     if (results.some((result) => result !== "skipped")) {
       console.info("Notifications scheduled", results);
     }
@@ -308,7 +326,7 @@ export async function scheduleAllNotifications(reminderMin = 15) {
 
 async function scheduleAt(date: Date, title: string, body: string): Promise<ScheduleResult> {
   const ms = date.getTime() - Date.now();
-  if (ms <= 0 || ms > 24 * 60 * 60 * 1000) return "skipped";
+  if (ms <= 0) return "skipped";
   // 1) جرّب Capacitor (APK) أولاً
   const native = await scheduleNative(date, title, body);
   if (native) return "native";
@@ -316,6 +334,7 @@ async function scheduleAt(date: Date, title: string, body: string): Promise<Sche
   const triggered = await scheduleViaTrigger(date, title, body);
   if (triggered) return "trigger";
   // 3) احتياط: setTimeout (يعمل فقط ما دام التطبيق مفتوحاً)
+  if (ms > 24 * 60 * 60 * 1000) return "skipped";
   const id = window.setTimeout(() => showNotificationNow(title, body), ms);
   timers.push(id);
   return "timeout";
@@ -337,8 +356,11 @@ export async function ensureDailySchedule(reminderMin = 15) {
   if (!isNative && (typeof Notification === "undefined" || Notification.permission !== "granted")) return;
   const savedReminderMin = await getReminderMinutes(reminderMin);
   const last = localStorage.getItem(SCHEDULED_KEY);
+  const scheduledUntil = getScheduleKey(
+    addDays(new Date(), isNative || supportsTimestampTrigger() ? BACKGROUND_SCHEDULE_DAYS - 1 : 0)
+  );
   const needsFreshSchedule = !isNative && !supportsTimestampTrigger();
-  if (needsFreshSchedule || last !== new Date().toDateString()) {
+  if (needsFreshSchedule || last !== scheduledUntil) {
     await scheduleAllNotifications(savedReminderMin);
   }
 }

@@ -69,11 +69,49 @@ function RootShell({ children }: { children: React.ReactNode }) {
 
 function RootComponent() {
   useEffect(() => {
-    const syncNotifications = () => {
-      ensureDailySchedule().catch(() => undefined);
+    const registerServiceWorker = async () => {
+      if (typeof window === "undefined" || !("serviceWorker" in navigator)) return;
+
+      let inIframe = false;
+      try {
+        inIframe = window.self !== window.top;
+      } catch {
+        inIframe = true;
+      }
+
+      const host = window.location.hostname;
+      const isPreview =
+        host.includes("id-preview--") ||
+        host.includes("lovableproject.com") ||
+        host === "localhost" ||
+        host === "127.0.0.1";
+
+      if (inIframe || isPreview) {
+        const regs = await navigator.serviceWorker.getRegistrations();
+        regs.forEach((r) => r.unregister());
+        return;
+      }
+
+      const existing = await navigator.serviceWorker.getRegistration();
+      if (existing) {
+        await navigator.serviceWorker.ready.catch(() => undefined);
+        return;
+      }
+
+      await navigator.serviceWorker.register("/sw.js").catch(() => undefined);
+      await navigator.serviceWorker.ready.catch(() => undefined);
+    };
+
+    const syncNotifications = async () => {
+      await registerServiceWorker();
+      await ensureDailySchedule().catch(() => undefined);
     };
 
     syncNotifications();
+
+    const handleFocus = () => {
+      syncNotifications();
+    };
 
     const handleVisibilityChange = () => {
       if (document.visibilityState === "visible") {
@@ -81,35 +119,13 @@ function RootComponent() {
       }
     };
 
-    window.addEventListener("focus", syncNotifications);
-    window.addEventListener("pageshow", syncNotifications);
+    window.addEventListener("focus", handleFocus);
+    window.addEventListener("pageshow", handleFocus);
     document.addEventListener("visibilitychange", handleVisibilityChange);
 
-    // تسجيل Service Worker — في الإنتاج فقط، وليس داخل iframe المعاينة
-    if (typeof window === "undefined" || !("serviceWorker" in navigator)) return;
-    let inIframe = false;
-    try {
-      inIframe = window.self !== window.top;
-    } catch {
-      inIframe = true;
-    }
-    const host = window.location.hostname;
-    const isPreview =
-      host.includes("id-preview--") ||
-      host.includes("lovableproject.com") ||
-      host === "localhost" ||
-      host === "127.0.0.1";
-    if (inIframe || isPreview) {
-      navigator.serviceWorker.getRegistrations().then((regs) => {
-        regs.forEach((r) => r.unregister());
-      });
-      return;
-    }
-    navigator.serviceWorker.register("/sw.js").catch(() => undefined);
-
     return () => {
-      window.removeEventListener("focus", syncNotifications);
-      window.removeEventListener("pageshow", syncNotifications);
+      window.removeEventListener("focus", handleFocus);
+      window.removeEventListener("pageshow", handleFocus);
       document.removeEventListener("visibilitychange", handleVisibilityChange);
     };
   }, []);
