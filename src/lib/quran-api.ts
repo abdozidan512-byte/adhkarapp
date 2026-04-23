@@ -3,16 +3,46 @@ import { reciters, type ReciterId } from "@/data/surahs";
 
 export type Ayah = { numberInSurah: number; text: string };
 
+// أنماط البسملة المختلفة كما تردنا من المصادر (مع/بدون تشكيل وفراغات)
+const BISMILLAH_PATTERNS = [
+  /^\s*بِسْمِ\s+ٱللَّهِ\s+ٱلرَّحْمَٰنِ\s+ٱلرَّحِيمِ\s*/,
+  /^\s*بِسْمِ\s+اللَّهِ\s+الرَّحْمَٰنِ\s+الرَّحِيمِ\s*/,
+  /^\s*بِسْمِ\s+ٱللّٰهِ\s+ٱلرَّحْمٰنِ\s+ٱلرَّحِيمِ\s*/,
+  /^\s*بسم\s+الله\s+الرحمن\s+الرحيم\s*/,
+];
+
+function stripLeadingBismillah(text: string): string {
+  for (const re of BISMILLAH_PATTERNS) {
+    if (re.test(text)) return text.replace(re, "").trim();
+  }
+  return text;
+}
+
 export async function fetchSurahText(surahNumber: number): Promise<Ayah[]> {
   const cached = await getSurah(surahNumber);
-  if (cached) return cached.ayahs;
+  if (cached) {
+    // تنظيف الكاش القديم الذي قد يحتوي على بسملة مكررة في الآية الأولى
+    if (surahNumber !== 1 && surahNumber !== 9 && cached.ayahs.length > 0) {
+      const first = cached.ayahs[0];
+      const cleaned = stripLeadingBismillah(first.text);
+      if (cleaned !== first.text) {
+        cached.ayahs[0] = { ...first, text: cleaned };
+        await saveSurah(surahNumber, cached.ayahs);
+      }
+    }
+    return cached.ayahs;
+  }
 
   const res = await fetch(`https://api.alquran.cloud/v1/surah/${surahNumber}/quran-uthmani`);
   const json = await res.json();
-  const ayahs: Ayah[] = json.data.ayahs.map((a: any) => ({
-    numberInSurah: a.numberInSurah,
-    text: a.text,
-  }));
+  const ayahs: Ayah[] = json.data.ayahs.map((a: any, idx: number) => {
+    let text: string = a.text;
+    // إزالة البسملة من بداية الآية الأولى لكل السور ما عدا الفاتحة (1) والتوبة (9)
+    if (idx === 0 && surahNumber !== 1 && surahNumber !== 9) {
+      text = stripLeadingBismillah(text);
+    }
+    return { numberInSurah: a.numberInSurah, text };
+  });
   await saveSurah(surahNumber, ayahs);
   return ayahs;
 }

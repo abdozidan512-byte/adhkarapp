@@ -141,13 +141,16 @@ function QuranIndex() {
       {/* Sheet تحميل كل السور */}
       {bulkOpen && (
         <div
-          className="fixed inset-0 z-50 flex items-end justify-center bg-black/60"
+          className="fixed inset-0 z-[100] flex items-end justify-center bg-black/60"
           onClick={() => !bulkProgress && setBulkOpen(false)}
         >
           <div
             onClick={(e) => e.stopPropagation()}
-            className="w-full max-w-md rounded-t-3xl border p-5"
-            style={{ background: "var(--card)" }}
+            className="max-h-[85vh] w-full max-w-md overflow-y-auto rounded-t-3xl border p-5"
+            style={{
+              background: "var(--card)",
+              paddingBottom: "calc(1.25rem + 5rem + env(safe-area-inset-bottom))",
+            }}
           >
             <div className="mx-auto mb-4 h-1.5 w-12 rounded-full bg-muted" />
             <h3 className="mb-1 text-lg font-extrabold">تحميل المصحف كاملاً</h3>
