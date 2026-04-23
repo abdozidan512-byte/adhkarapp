@@ -69,7 +69,21 @@ function RootShell({ children }: { children: React.ReactNode }) {
 
 function RootComponent() {
   useEffect(() => {
-    ensureDailySchedule();
+    const syncNotifications = () => {
+      ensureDailySchedule().catch(() => undefined);
+    };
+
+    syncNotifications();
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible") {
+        syncNotifications();
+      }
+    };
+
+    window.addEventListener("focus", syncNotifications);
+    window.addEventListener("pageshow", syncNotifications);
+    document.addEventListener("visibilitychange", handleVisibilityChange);
 
     // تسجيل Service Worker — في الإنتاج فقط، وليس داخل iframe المعاينة
     if (typeof window === "undefined" || !("serviceWorker" in navigator)) return;
@@ -92,6 +106,12 @@ function RootComponent() {
       return;
     }
     navigator.serviceWorker.register("/sw.js").catch(() => undefined);
+
+    return () => {
+      window.removeEventListener("focus", syncNotifications);
+      window.removeEventListener("pageshow", syncNotifications);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+    };
   }, []);
   return (
     <ThemeProvider>
