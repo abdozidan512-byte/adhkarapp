@@ -40,14 +40,16 @@ function SettingsPage() {
   async function saveReminder(v: number) {
     setReminderMin(v);
     await saveSetting("reminderMin", v);
-    if (enabled) scheduleAll(v);
+    if (enabled) await scheduleAll(v);
   }
 
   function toggleNotifType(type: NotifType) {
     setType(type, !types[type]);
     if (enabled) {
       // Re-schedule with new prefs
-      setTimeout(() => scheduleAll(reminderMin), 50);
+      setTimeout(() => {
+        scheduleAll(reminderMin).catch(() => undefined);
+      }, 50);
     }
   }
 
@@ -56,7 +58,7 @@ function SettingsPage() {
       const granted = await requestPermission();
       if (granted) {
         setEnabled(true);
-        scheduleAll(reminderMin);
+        await scheduleAll(reminderMin);
       }
     } else {
       setEnabled(false);
