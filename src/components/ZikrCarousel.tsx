@@ -46,12 +46,70 @@ export function ZikrCarousel({ items, title }: { items: Zikr[]; title: string })
   });
   const [selected, setSelected] = useState(0);
   const [counts, setCounts] = useState<number[]>(() => items.map((it) => it.count));
+  const [playingIdx, setPlayingIdx] = useState<number | null>(null);
+  const [loadingIdx, setLoadingIdx] = useState<number | null>(null);
+  const [audioError, setAudioError] = useState<string | null>(null);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const audioUrlRef = useRef<string | null>(null);
 
   useEffect(() => {
     setCounts(items.map((it) => it.count));
     setSelected(0);
     emblaApi?.scrollTo(0);
+    stopAudio();
   }, [items, emblaApi]);
+
+  function stopAudio() {
+    if (audioRef.current) {
+      audioRef.current.pause();
+      audioRef.current.src = "";
+      audioRef.current = null;
+    }
+    if (audioUrlRef.current) {
+      URL.revokeObjectURL(audioUrlRef.current);
+      audioUrlRef.current = null;
+    }
+    setPlayingIdx(null);
+    setLoadingIdx(null);
+  }
+
+  useEffect(() => {
+    return () => stopAudio();
+  }, []);
+
+  // عند تغيير الذكر الحالي نوقف الصوت
+  useEffect(() => {
+    stopAudio();
+  }, [selected]);
+
+  async function togglePlay(idx: number, text: string) {
+    setAudioError(null);
+    if (playingIdx === idx) {
+      stopAudio();
+      return;
+    }
+    stopAudio();
+    setLoadingIdx(idx);
+    try {
+      const blob = await getZikrAudioBlob(text);
+      const url = URL.createObjectURL(blob);
+      audioUrlRef.current = url;
+      const audio = new Audio(url);
+      audioRef.current = audio;
+      audio.onended = () => stopAudio();
+      audio.onerror = () => {
+        setAudioError("تعذّر تشغيل الصوت");
+        stopAudio();
+      };
+      await audio.play();
+      setPlayingIdx(idx);
+    } catch (e) {
+      setAudioError(e instanceof Error ? e.message : "فشل توليد الصوت");
+    } finally {
+      setLoadingIdx(null);
+    }
+  }
+
 
   useEffect(() => {
     if (!emblaApi) return;
