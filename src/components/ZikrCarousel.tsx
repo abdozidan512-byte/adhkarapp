@@ -202,27 +202,51 @@ export function ZikrCarousel({ items, title }: { items: Zikr[]; title: string })
                     )}
                   </div>
 
-                  {/* Counter button */}
-                  <div className="relative mt-4 flex items-center justify-between gap-3">
+                  {audioError && playingIdx === null && loadingIdx === null && (
+                    <p className="relative mt-2 text-center text-[11px] text-destructive">{audioError}</p>
+                  )}
+
+                  {/* Counter + audio buttons */}
+                  <div className="relative mt-4 flex items-center justify-between gap-2">
                     <button
                       onClick={() => reset(idx)}
-                      className="flex h-12 w-12 items-center justify-center rounded-2xl border text-muted-foreground transition-all hover:bg-muted active:scale-95"
+                      className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border text-muted-foreground transition-all hover:bg-muted active:scale-95"
                       aria-label="إعادة"
                     >
                       <RefreshCw className="h-4 w-4" />
                     </button>
 
                     <button
+                      onClick={() => togglePlay(idx, zikr.text)}
+                      disabled={loadingIdx === idx}
+                      className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border transition-all active:scale-95 disabled:opacity-60"
+                      style={{
+                        background: playingIdx === idx ? "var(--gradient-gold)" : "transparent",
+                        color: playingIdx === idx ? "var(--gold-foreground)" : "var(--gold)",
+                        borderColor: "var(--gold)",
+                      }}
+                      aria-label={playingIdx === idx ? "إيقاف" : "تشغيل"}
+                    >
+                      {loadingIdx === idx ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : playingIdx === idx ? (
+                        <Pause className="h-4 w-4" />
+                      ) : (
+                        <Play className="h-4 w-4" />
+                      )}
+                    </button>
+
+                    <button
                       onClick={() => dec(idx)}
                       disabled={done}
-                      className="flex flex-1 items-center justify-center gap-3 rounded-2xl py-4 text-lg font-extrabold transition-all active:scale-[0.98] disabled:opacity-60"
+                      className="flex flex-1 items-center justify-center gap-3 rounded-2xl py-4 text-base font-extrabold transition-all active:scale-[0.98] disabled:opacity-60"
                       style={{
                         background: done ? "var(--gradient-gold)" : "var(--gradient-primary)",
                         color: done ? "var(--gold-foreground)" : "var(--primary-foreground)",
                         boxShadow: done ? "var(--shadow-gold)" : "var(--shadow-elegant)",
                       }}
                     >
-                      {done ? "✓ تم بحمد الله" : `اضغط - متبقّي ${remaining}`}
+                      {done ? "✓ تم بحمد الله" : `متبقّي ${remaining}`}
                     </button>
                   </div>
                 </div>
