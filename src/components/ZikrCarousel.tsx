@@ -1,7 +1,8 @@
-import { useEffect, useState, Fragment, type ReactNode } from "react";
+import { useEffect, useRef, useState, Fragment, type ReactNode } from "react";
 import useEmblaCarousel from "embla-carousel-react";
-import { ChevronLeft, ChevronRight, RefreshCw, Sparkles } from "lucide-react";
+import { ChevronLeft, ChevronRight, RefreshCw, Sparkles, Play, Pause, Loader2 } from "lucide-react";
 import type { Zikr } from "@/data/azkar";
+import { getZikrAudioBlob } from "@/lib/azkar-tts";
 
 // Renders text with [[N]] markers replaced by golden numbered circles.
 function renderWithAyahNumbers(text: string): ReactNode {
