@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, Fragment, type ReactNode } from "react";
 import useEmblaCarousel from "embla-carousel-react";
 import { ChevronLeft, ChevronRight, RefreshCw, Sparkles, Play, Pause, Loader2 } from "lucide-react";
 import type { Zikr } from "@/data/azkar";
-import { getZikrAudioBlob } from "@/lib/azkar-tts";
+import { azkarSectionAudio } from "@/data/azkar-audio";
 
 // Renders text with [[N]] markers replaced by golden numbered circles.
 function renderWithAyahNumbers(text: string): ReactNode {
@@ -24,7 +24,6 @@ function renderWithAyahNumbers(text: string): ReactNode {
         </span>
       );
     }
-    // Preserve newlines
     return (
       <Fragment key={i}>
         {part.split("\n").map((line, j, arr) => (
@@ -38,7 +37,7 @@ function renderWithAyahNumbers(text: string): ReactNode {
   });
 }
 
-export function ZikrCarousel({ items, title }: { items: Zikr[]; title: string }) {
+export function ZikrCarousel({ items, title, sectionId }: { items: Zikr[]; title: string; sectionId: string }) {
   const [emblaRef, emblaApi] = useEmblaCarousel({
     direction: "rtl",
     loop: false,
@@ -46,70 +45,60 @@ export function ZikrCarousel({ items, title }: { items: Zikr[]; title: string })
   });
   const [selected, setSelected] = useState(0);
   const [counts, setCounts] = useState<number[]>(() => items.map((it) => it.count));
-  const [playingIdx, setPlayingIdx] = useState<number | null>(null);
-  const [loadingIdx, setLoadingIdx] = useState<number | null>(null);
-  const [audioError, setAudioError] = useState<string | null>(null);
+
+  // Section-level audio player (one mp3 covering the whole category)
+  const audioInfo = azkarSectionAudio[sectionId];
   const audioRef = useRef<HTMLAudioElement | null>(null);
-  const audioUrlRef = useRef<string | null>(null);
+  const [playing, setPlaying] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [audioError, setAudioError] = useState<string | null>(null);
 
   useEffect(() => {
     setCounts(items.map((it) => it.count));
     setSelected(0);
     emblaApi?.scrollTo(0);
-    stopAudio();
   }, [items, emblaApi]);
 
-  function stopAudio() {
-    if (audioRef.current) {
-      audioRef.current.pause();
-      audioRef.current.src = "";
+  // Initialize audio element once per section
+  useEffect(() => {
+    if (!audioInfo) return;
+    const a = new Audio(audioInfo.url);
+    a.preload = "none";
+    a.onended = () => setPlaying(false);
+    a.onpause = () => setPlaying(false);
+    a.onplay = () => setPlaying(true);
+    a.onwaiting = () => setLoading(true);
+    a.oncanplay = () => setLoading(false);
+    a.onerror = () => {
+      setAudioError("تعذّر تحميل الصوت — تحقق من الاتصال");
+      setPlaying(false);
+      setLoading(false);
+    };
+    audioRef.current = a;
+    return () => {
+      a.pause();
+      a.src = "";
       audioRef.current = null;
-    }
-    if (audioUrlRef.current) {
-      URL.revokeObjectURL(audioUrlRef.current);
-      audioUrlRef.current = null;
-    }
-    setPlayingIdx(null);
-    setLoadingIdx(null);
-  }
+      setPlaying(false);
+      setLoading(false);
+    };
+  }, [audioInfo]);
 
-  useEffect(() => {
-    return () => stopAudio();
-  }, []);
-
-  // عند تغيير الذكر الحالي نوقف الصوت
-  useEffect(() => {
-    stopAudio();
-  }, [selected]);
-
-  async function togglePlay(idx: number, text: string) {
+  async function toggleSectionPlay() {
+    if (!audioRef.current) return;
     setAudioError(null);
-    if (playingIdx === idx) {
-      stopAudio();
+    if (playing) {
+      audioRef.current.pause();
       return;
     }
-    stopAudio();
-    setLoadingIdx(idx);
     try {
-      const blob = await getZikrAudioBlob(text);
-      const url = URL.createObjectURL(blob);
-      audioUrlRef.current = url;
-      const audio = new Audio(url);
-      audioRef.current = audio;
-      audio.onended = () => stopAudio();
-      audio.onerror = () => {
-        setAudioError("تعذّر تشغيل الصوت");
-        stopAudio();
-      };
-      await audio.play();
-      setPlayingIdx(idx);
-    } catch (e) {
-      setAudioError(e instanceof Error ? e.message : "فشل توليد الصوت");
-    } finally {
-      setLoadingIdx(null);
+      setLoading(true);
+      await audioRef.current.play();
+    } catch {
+      setAudioError("تعذّر تشغيل الصوت");
+      setLoading(false);
     }
   }
-
 
   useEffect(() => {
     if (!emblaApi) return;
@@ -125,7 +114,6 @@ export function ZikrCarousel({ items, title }: { items: Zikr[]; title: string })
     setCounts((c) => {
       const next = [...c];
       if (next[idx] > 0) next[idx] = next[idx] - 1;
-      // auto advance when finished
       if (next[idx] === 0 && idx < items.length - 1) {
         setTimeout(() => emblaApi?.scrollNext(), 250);
       }
@@ -141,7 +129,7 @@ export function ZikrCarousel({ items, title }: { items: Zikr[]; title: string })
 
   return (
     <div className="flex h-full flex-col">
-      {/* Progress */}
+      {/* Progress + section audio */}
       <div className="px-5 pt-2">
         <div className="flex items-center justify-between text-xs text-muted-foreground">
           <span className="font-bold text-foreground">{title}</span>
@@ -158,6 +146,42 @@ export function ZikrCarousel({ items, title }: { items: Zikr[]; title: string })
             }}
           />
         </div>
+
+        {audioInfo && (
+          <div
+            className="mt-3 flex items-center gap-3 rounded-2xl border p-2.5"
+            style={{
+              background: "color-mix(in oklab, var(--gold) 8%, transparent)",
+              borderColor: "color-mix(in oklab, var(--gold) 35%, transparent)",
+            }}
+          >
+            <button
+              onClick={toggleSectionPlay}
+              disabled={loading}
+              className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl active:scale-95 disabled:opacity-60"
+              style={{
+                background: "var(--gradient-gold)",
+                color: "var(--gold-foreground)",
+                boxShadow: "var(--shadow-gold)",
+              }}
+              aria-label={playing ? "إيقاف" : "تشغيل"}
+            >
+              {loading ? (
+                <Loader2 className="h-5 w-5 animate-spin" />
+              ) : playing ? (
+                <Pause className="h-5 w-5" />
+              ) : (
+                <Play className="h-5 w-5" />
+              )}
+            </button>
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-xs font-extrabold">{audioInfo.label}</p>
+              <p className="truncate text-[10px] text-muted-foreground">
+                {audioError ?? (playing ? "جارٍ التشغيل..." : "اضغط للاستماع للقسم كاملاً")}
+              </p>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Embla viewport - full screen card per zikr */}
@@ -181,7 +205,6 @@ export function ZikrCarousel({ items, title }: { items: Zikr[]; title: string })
                 >
                   <div className="pattern-islamic absolute inset-0 opacity-[0.07]" />
 
-                  {/* corner ornaments */}
                   <div className="absolute right-3 top-3 text-2xl opacity-30" style={{ color: "var(--gold)" }}>﷽</div>
 
                   <div className="relative flex-1 overflow-y-auto pt-8 hide-scrollbar">
@@ -202,11 +225,7 @@ export function ZikrCarousel({ items, title }: { items: Zikr[]; title: string })
                     )}
                   </div>
 
-                  {audioError && playingIdx === null && loadingIdx === null && (
-                    <p className="relative mt-2 text-center text-[11px] text-destructive">{audioError}</p>
-                  )}
-
-                  {/* Counter + audio buttons */}
+                  {/* Counter buttons */}
                   <div className="relative mt-4 flex items-center justify-between gap-2">
                     <button
                       onClick={() => reset(idx)}
@@ -214,26 +233,6 @@ export function ZikrCarousel({ items, title }: { items: Zikr[]; title: string })
                       aria-label="إعادة"
                     >
                       <RefreshCw className="h-4 w-4" />
-                    </button>
-
-                    <button
-                      onClick={() => togglePlay(idx, zikr.text)}
-                      disabled={loadingIdx === idx}
-                      className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border transition-all active:scale-95 disabled:opacity-60"
-                      style={{
-                        background: playingIdx === idx ? "var(--gradient-gold)" : "transparent",
-                        color: playingIdx === idx ? "var(--gold-foreground)" : "var(--gold)",
-                        borderColor: "var(--gold)",
-                      }}
-                      aria-label={playingIdx === idx ? "إيقاف" : "تشغيل"}
-                    >
-                      {loadingIdx === idx ? (
-                        <Loader2 className="h-4 w-4 animate-spin" />
-                      ) : playingIdx === idx ? (
-                        <Pause className="h-4 w-4" />
-                      ) : (
-                        <Play className="h-4 w-4" />
-                      )}
                     </button>
 
                     <button
