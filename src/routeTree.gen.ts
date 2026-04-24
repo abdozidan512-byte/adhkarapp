@@ -11,6 +11,7 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as SettingsRouteImport } from './routes/settings'
 import { Route as QiblaRouteImport } from './routes/qibla'
+import { Route as HadithRouteImport } from './routes/hadith'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as QuranIndexRouteImport } from './routes/quran.index'
 import { Route as AzkarIndexRouteImport } from './routes/azkar.index'
@@ -25,6 +26,11 @@ const SettingsRoute = SettingsRouteImport.update({
 const QiblaRoute = QiblaRouteImport.update({
   id: '/qibla',
   path: '/qibla',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const HadithRoute = HadithRouteImport.update({
+  id: '/hadith',
+  path: '/hadith',
   getParentRoute: () => rootRouteImport,
 } as any)
 const IndexRoute = IndexRouteImport.update({
@@ -55,6 +61,7 @@ const AzkarIdRoute = AzkarIdRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/hadith': typeof HadithRoute
   '/qibla': typeof QiblaRoute
   '/settings': typeof SettingsRoute
   '/azkar/$id': typeof AzkarIdRoute
@@ -64,6 +71,7 @@ export interface FileRoutesByFullPath {
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/hadith': typeof HadithRoute
   '/qibla': typeof QiblaRoute
   '/settings': typeof SettingsRoute
   '/azkar/$id': typeof AzkarIdRoute
@@ -74,6 +82,7 @@ export interface FileRoutesByTo {
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/hadith': typeof HadithRoute
   '/qibla': typeof QiblaRoute
   '/settings': typeof SettingsRoute
   '/azkar/$id': typeof AzkarIdRoute
@@ -85,6 +94,7 @@ export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
+    | '/hadith'
     | '/qibla'
     | '/settings'
     | '/azkar/$id'
@@ -94,6 +104,7 @@ export interface FileRouteTypes {
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
+    | '/hadith'
     | '/qibla'
     | '/settings'
     | '/azkar/$id'
@@ -103,6 +114,7 @@ export interface FileRouteTypes {
   id:
     | '__root__'
     | '/'
+    | '/hadith'
     | '/qibla'
     | '/settings'
     | '/azkar/$id'
@@ -113,6 +125,7 @@ export interface FileRouteTypes {
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  HadithRoute: typeof HadithRoute
   QiblaRoute: typeof QiblaRoute
   SettingsRoute: typeof SettingsRoute
   AzkarIdRoute: typeof AzkarIdRoute
@@ -135,6 +148,13 @@ declare module '@tanstack/react-router' {
       path: '/qibla'
       fullPath: '/qibla'
       preLoaderRoute: typeof QiblaRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/hadith': {
+      id: '/hadith'
+      path: '/hadith'
+      fullPath: '/hadith'
+      preLoaderRoute: typeof HadithRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/': {
@@ -177,6 +197,7 @@ declare module '@tanstack/react-router' {
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  HadithRoute: HadithRoute,
   QiblaRoute: QiblaRoute,
   SettingsRoute: SettingsRoute,
   AzkarIdRoute: AzkarIdRoute,
