@@ -38,7 +38,7 @@ function AzkarDetail() {
         <div className="w-10" />
       </div>
       <div className="mt-2 flex-1 overflow-hidden">
-        <ZikrCarousel items={cat.items} title={cat.title} />
+        <ZikrCarousel items={cat.items} title={cat.title} sectionId={cat.id} />
       </div>
     </div>
   );

@@ -11,12 +11,12 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as SettingsRouteImport } from './routes/settings'
 import { Route as QiblaRouteImport } from './routes/qibla'
+import { Route as HadithRouteImport } from './routes/hadith'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as QuranIndexRouteImport } from './routes/quran.index'
 import { Route as AzkarIndexRouteImport } from './routes/azkar.index'
 import { Route as QuranNumRouteImport } from './routes/quran.$num'
 import { Route as AzkarIdRouteImport } from './routes/azkar.$id'
-import { Route as ApiTtsRouteImport } from './routes/api.tts'
 
 const SettingsRoute = SettingsRouteImport.update({
   id: '/settings',
@@ -26,6 +26,11 @@ const SettingsRoute = SettingsRouteImport.update({
 const QiblaRoute = QiblaRouteImport.update({
   id: '/qibla',
   path: '/qibla',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const HadithRoute = HadithRouteImport.update({
+  id: '/hadith',
+  path: '/hadith',
   getParentRoute: () => rootRouteImport,
 } as any)
 const IndexRoute = IndexRouteImport.update({
@@ -53,17 +58,12 @@ const AzkarIdRoute = AzkarIdRouteImport.update({
   path: '/azkar/$id',
   getParentRoute: () => rootRouteImport,
 } as any)
-const ApiTtsRoute = ApiTtsRouteImport.update({
-  id: '/api/tts',
-  path: '/api/tts',
-  getParentRoute: () => rootRouteImport,
-} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/hadith': typeof HadithRoute
   '/qibla': typeof QiblaRoute
   '/settings': typeof SettingsRoute
-  '/api/tts': typeof ApiTtsRoute
   '/azkar/$id': typeof AzkarIdRoute
   '/quran/$num': typeof QuranNumRoute
   '/azkar/': typeof AzkarIndexRoute
@@ -71,9 +71,9 @@ export interface FileRoutesByFullPath {
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/hadith': typeof HadithRoute
   '/qibla': typeof QiblaRoute
   '/settings': typeof SettingsRoute
-  '/api/tts': typeof ApiTtsRoute
   '/azkar/$id': typeof AzkarIdRoute
   '/quran/$num': typeof QuranNumRoute
   '/azkar': typeof AzkarIndexRoute
@@ -82,9 +82,9 @@ export interface FileRoutesByTo {
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/hadith': typeof HadithRoute
   '/qibla': typeof QiblaRoute
   '/settings': typeof SettingsRoute
-  '/api/tts': typeof ApiTtsRoute
   '/azkar/$id': typeof AzkarIdRoute
   '/quran/$num': typeof QuranNumRoute
   '/azkar/': typeof AzkarIndexRoute
@@ -94,9 +94,9 @@ export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
+    | '/hadith'
     | '/qibla'
     | '/settings'
-    | '/api/tts'
     | '/azkar/$id'
     | '/quran/$num'
     | '/azkar/'
@@ -104,9 +104,9 @@ export interface FileRouteTypes {
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
+    | '/hadith'
     | '/qibla'
     | '/settings'
-    | '/api/tts'
     | '/azkar/$id'
     | '/quran/$num'
     | '/azkar'
@@ -114,9 +114,9 @@ export interface FileRouteTypes {
   id:
     | '__root__'
     | '/'
+    | '/hadith'
     | '/qibla'
     | '/settings'
-    | '/api/tts'
     | '/azkar/$id'
     | '/quran/$num'
     | '/azkar/'
@@ -125,9 +125,9 @@ export interface FileRouteTypes {
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  HadithRoute: typeof HadithRoute
   QiblaRoute: typeof QiblaRoute
   SettingsRoute: typeof SettingsRoute
-  ApiTtsRoute: typeof ApiTtsRoute
   AzkarIdRoute: typeof AzkarIdRoute
   QuranNumRoute: typeof QuranNumRoute
   AzkarIndexRoute: typeof AzkarIndexRoute
@@ -148,6 +148,13 @@ declare module '@tanstack/react-router' {
       path: '/qibla'
       fullPath: '/qibla'
       preLoaderRoute: typeof QiblaRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/hadith': {
+      id: '/hadith'
+      path: '/hadith'
+      fullPath: '/hadith'
+      preLoaderRoute: typeof HadithRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/': {
@@ -185,21 +192,14 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AzkarIdRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/api/tts': {
-      id: '/api/tts'
-      path: '/api/tts'
-      fullPath: '/api/tts'
-      preLoaderRoute: typeof ApiTtsRouteImport
-      parentRoute: typeof rootRouteImport
-    }
   }
 }
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  HadithRoute: HadithRoute,
   QiblaRoute: QiblaRoute,
   SettingsRoute: SettingsRoute,
-  ApiTtsRoute: ApiTtsRoute,
   AzkarIdRoute: AzkarIdRoute,
   QuranNumRoute: QuranNumRoute,
   AzkarIndexRoute: AzkarIndexRoute,
