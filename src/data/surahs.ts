@@ -144,10 +144,41 @@ export const reciters = [
   {
     id: "ar.luhaidan",
     name: "محمد اللحيدان",
-    // sources: https://server8.mp3quran.net/lhdan/{001}.mp3
     surahBaseUrl: "https://server8.mp3quran.net/lhdan/",
     mode: "surah",
     avatar: "🌙",
+  },
+  {
+    id: "ar.alafasy",
+    name: "مشاري العفاسي",
+    subfolder: "Alafasy_128kbps",
+    surahBaseUrl: "https://server8.mp3quran.net/afs/",
+    mode: "ayah",
+    avatar: "🌟",
+  },
+  {
+    id: "ar.abdulbasit",
+    name: "عبدالباسط عبدالصمد",
+    subfolder: "AbdulSamad_64kbps_QuranExplorer.Com",
+    surahBaseUrl: "https://server7.mp3quran.net/basit/",
+    mode: "ayah",
+    avatar: "🎙️",
+  },
+  {
+    id: "ar.husary",
+    name: "محمود خليل الحصري",
+    subfolder: "Husary_128kbps",
+    surahBaseUrl: "https://server13.mp3quran.net/husr/",
+    mode: "ayah",
+    avatar: "📿",
+  },
+  {
+    id: "ar.minshawi",
+    name: "محمد صديق المنشاوي",
+    subfolder: "Minshawy_Murattal_128kbps",
+    surahBaseUrl: "https://server10.mp3quran.net/minsh/",
+    mode: "ayah",
+    avatar: "🕋",
   },
 ] as const;
 
