@@ -16,7 +16,6 @@ import { Route as QuranIndexRouteImport } from './routes/quran.index'
 import { Route as AzkarIndexRouteImport } from './routes/azkar.index'
 import { Route as QuranNumRouteImport } from './routes/quran.$num'
 import { Route as AzkarIdRouteImport } from './routes/azkar.$id'
-import { Route as ApiTtsRouteImport } from './routes/api.tts'
 
 const SettingsRoute = SettingsRouteImport.update({
   id: '/settings',
@@ -53,17 +52,11 @@ const AzkarIdRoute = AzkarIdRouteImport.update({
   path: '/azkar/$id',
   getParentRoute: () => rootRouteImport,
 } as any)
-const ApiTtsRoute = ApiTtsRouteImport.update({
-  id: '/api/tts',
-  path: '/api/tts',
-  getParentRoute: () => rootRouteImport,
-} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/qibla': typeof QiblaRoute
   '/settings': typeof SettingsRoute
-  '/api/tts': typeof ApiTtsRoute
   '/azkar/$id': typeof AzkarIdRoute
   '/quran/$num': typeof QuranNumRoute
   '/azkar/': typeof AzkarIndexRoute
@@ -73,7 +66,6 @@ export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/qibla': typeof QiblaRoute
   '/settings': typeof SettingsRoute
-  '/api/tts': typeof ApiTtsRoute
   '/azkar/$id': typeof AzkarIdRoute
   '/quran/$num': typeof QuranNumRoute
   '/azkar': typeof AzkarIndexRoute
@@ -84,7 +76,6 @@ export interface FileRoutesById {
   '/': typeof IndexRoute
   '/qibla': typeof QiblaRoute
   '/settings': typeof SettingsRoute
-  '/api/tts': typeof ApiTtsRoute
   '/azkar/$id': typeof AzkarIdRoute
   '/quran/$num': typeof QuranNumRoute
   '/azkar/': typeof AzkarIndexRoute
@@ -96,7 +87,6 @@ export interface FileRouteTypes {
     | '/'
     | '/qibla'
     | '/settings'
-    | '/api/tts'
     | '/azkar/$id'
     | '/quran/$num'
     | '/azkar/'
@@ -106,7 +96,6 @@ export interface FileRouteTypes {
     | '/'
     | '/qibla'
     | '/settings'
-    | '/api/tts'
     | '/azkar/$id'
     | '/quran/$num'
     | '/azkar'
@@ -116,7 +105,6 @@ export interface FileRouteTypes {
     | '/'
     | '/qibla'
     | '/settings'
-    | '/api/tts'
     | '/azkar/$id'
     | '/quran/$num'
     | '/azkar/'
@@ -127,7 +115,6 @@ export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   QiblaRoute: typeof QiblaRoute
   SettingsRoute: typeof SettingsRoute
-  ApiTtsRoute: typeof ApiTtsRoute
   AzkarIdRoute: typeof AzkarIdRoute
   QuranNumRoute: typeof QuranNumRoute
   AzkarIndexRoute: typeof AzkarIndexRoute
@@ -185,13 +172,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AzkarIdRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/api/tts': {
-      id: '/api/tts'
-      path: '/api/tts'
-      fullPath: '/api/tts'
-      preLoaderRoute: typeof ApiTtsRouteImport
-      parentRoute: typeof rootRouteImport
-    }
   }
 }
 
@@ -199,7 +179,6 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   QiblaRoute: QiblaRoute,
   SettingsRoute: SettingsRoute,
-  ApiTtsRoute: ApiTtsRoute,
   AzkarIdRoute: AzkarIdRoute,
   QuranNumRoute: QuranNumRoute,
   AzkarIndexRoute: AzkarIndexRoute,
