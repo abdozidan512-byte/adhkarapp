@@ -93,12 +93,34 @@ function RootComponent() {
       }
 
       const existing = await navigator.serviceWorker.getRegistration();
-      if (existing) {
-        await navigator.serviceWorker.ready.catch(() => undefined);
-        return;
-      }
+      const reg = existing ?? (await navigator.serviceWorker.register("/sw.js").catch(() => undefined));
+      if (!reg) return;
 
-      await navigator.serviceWorker.register("/sw.js").catch(() => undefined);
+      // إجبار التحديث وفحص الإصدار الجديد
+      try {
+        await reg.update();
+      } catch {}
+
+      // إذا وُجد SW جديد بانتظار التفعيل، فعّله فوراً ثم أعد التحميل مرة واحدة
+      const activateWaiting = (sw: ServiceWorker | null) => {
+        if (sw && sw.state === "installed" && navigator.serviceWorker.controller) {
+          sw.postMessage("SKIP_WAITING");
+        }
+      };
+      activateWaiting(reg.waiting);
+      reg.addEventListener("updatefound", () => {
+        const nw = reg.installing;
+        if (!nw) return;
+        nw.addEventListener("statechange", () => activateWaiting(nw));
+      });
+
+      let reloaded = false;
+      navigator.serviceWorker.addEventListener("controllerchange", () => {
+        if (reloaded) return;
+        reloaded = true;
+        window.location.reload();
+      });
+
       await navigator.serviceWorker.ready.catch(() => undefined);
     };
 
