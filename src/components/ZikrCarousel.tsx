@@ -1,7 +1,8 @@
-import { useEffect, useState, Fragment, type ReactNode } from "react";
+import { useEffect, useRef, useState, Fragment, type ReactNode } from "react";
 import useEmblaCarousel from "embla-carousel-react";
-import { ChevronLeft, ChevronRight, RefreshCw, Sparkles } from "lucide-react";
+import { ChevronLeft, ChevronRight, RefreshCw, Sparkles, Play, Pause, Loader2 } from "lucide-react";
 import type { Zikr } from "@/data/azkar";
+import { getZikrAudioBlob } from "@/lib/azkar-tts";
 
 // Renders text with [[N]] markers replaced by golden numbered circles.
 function renderWithAyahNumbers(text: string): ReactNode {
@@ -45,12 +46,70 @@ export function ZikrCarousel({ items, title }: { items: Zikr[]; title: string })
   });
   const [selected, setSelected] = useState(0);
   const [counts, setCounts] = useState<number[]>(() => items.map((it) => it.count));
+  const [playingIdx, setPlayingIdx] = useState<number | null>(null);
+  const [loadingIdx, setLoadingIdx] = useState<number | null>(null);
+  const [audioError, setAudioError] = useState<string | null>(null);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const audioUrlRef = useRef<string | null>(null);
 
   useEffect(() => {
     setCounts(items.map((it) => it.count));
     setSelected(0);
     emblaApi?.scrollTo(0);
+    stopAudio();
   }, [items, emblaApi]);
+
+  function stopAudio() {
+    if (audioRef.current) {
+      audioRef.current.pause();
+      audioRef.current.src = "";
+      audioRef.current = null;
+    }
+    if (audioUrlRef.current) {
+      URL.revokeObjectURL(audioUrlRef.current);
+      audioUrlRef.current = null;
+    }
+    setPlayingIdx(null);
+    setLoadingIdx(null);
+  }
+
+  useEffect(() => {
+    return () => stopAudio();
+  }, []);
+
+  // عند تغيير الذكر الحالي نوقف الصوت
+  useEffect(() => {
+    stopAudio();
+  }, [selected]);
+
+  async function togglePlay(idx: number, text: string) {
+    setAudioError(null);
+    if (playingIdx === idx) {
+      stopAudio();
+      return;
+    }
+    stopAudio();
+    setLoadingIdx(idx);
+    try {
+      const blob = await getZikrAudioBlob(text);
+      const url = URL.createObjectURL(blob);
+      audioUrlRef.current = url;
+      const audio = new Audio(url);
+      audioRef.current = audio;
+      audio.onended = () => stopAudio();
+      audio.onerror = () => {
+        setAudioError("تعذّر تشغيل الصوت");
+        stopAudio();
+      };
+      await audio.play();
+      setPlayingIdx(idx);
+    } catch (e) {
+      setAudioError(e instanceof Error ? e.message : "فشل توليد الصوت");
+    } finally {
+      setLoadingIdx(null);
+    }
+  }
+
 
   useEffect(() => {
     if (!emblaApi) return;
@@ -143,27 +202,51 @@ export function ZikrCarousel({ items, title }: { items: Zikr[]; title: string })
                     )}
                   </div>
 
-                  {/* Counter button */}
-                  <div className="relative mt-4 flex items-center justify-between gap-3">
+                  {audioError && playingIdx === null && loadingIdx === null && (
+                    <p className="relative mt-2 text-center text-[11px] text-destructive">{audioError}</p>
+                  )}
+
+                  {/* Counter + audio buttons */}
+                  <div className="relative mt-4 flex items-center justify-between gap-2">
                     <button
                       onClick={() => reset(idx)}
-                      className="flex h-12 w-12 items-center justify-center rounded-2xl border text-muted-foreground transition-all hover:bg-muted active:scale-95"
+                      className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border text-muted-foreground transition-all hover:bg-muted active:scale-95"
                       aria-label="إعادة"
                     >
                       <RefreshCw className="h-4 w-4" />
                     </button>
 
                     <button
+                      onClick={() => togglePlay(idx, zikr.text)}
+                      disabled={loadingIdx === idx}
+                      className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border transition-all active:scale-95 disabled:opacity-60"
+                      style={{
+                        background: playingIdx === idx ? "var(--gradient-gold)" : "transparent",
+                        color: playingIdx === idx ? "var(--gold-foreground)" : "var(--gold)",
+                        borderColor: "var(--gold)",
+                      }}
+                      aria-label={playingIdx === idx ? "إيقاف" : "تشغيل"}
+                    >
+                      {loadingIdx === idx ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : playingIdx === idx ? (
+                        <Pause className="h-4 w-4" />
+                      ) : (
+                        <Play className="h-4 w-4" />
+                      )}
+                    </button>
+
+                    <button
                       onClick={() => dec(idx)}
                       disabled={done}
-                      className="flex flex-1 items-center justify-center gap-3 rounded-2xl py-4 text-lg font-extrabold transition-all active:scale-[0.98] disabled:opacity-60"
+                      className="flex flex-1 items-center justify-center gap-3 rounded-2xl py-4 text-base font-extrabold transition-all active:scale-[0.98] disabled:opacity-60"
                       style={{
                         background: done ? "var(--gradient-gold)" : "var(--gradient-primary)",
                         color: done ? "var(--gold-foreground)" : "var(--primary-foreground)",
                         boxShadow: done ? "var(--shadow-gold)" : "var(--shadow-elegant)",
                       }}
                     >
-                      {done ? "✓ تم بحمد الله" : `اضغط - متبقّي ${remaining}`}
+                      {done ? "✓ تم بحمد الله" : `متبقّي ${remaining}`}
                     </button>
                   </div>
                 </div>

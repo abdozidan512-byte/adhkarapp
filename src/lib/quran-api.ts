@@ -86,10 +86,11 @@ export function getAyahAudioUrl(reciterId: ReciterId, surahNumber: number, ayah:
 export function getFullSurahAudioUrl(reciterId: ReciterId, surahNumber: number) {
   const reciter = getReciter(reciterId);
   if (!reciter) return "";
-  if (reciter.mode === "surah" && "surahBaseUrl" in reciter) {
+  // إذا كان للقارئ surahBaseUrl نستخدمه مباشرة
+  if ("surahBaseUrl" in reciter && reciter.surahBaseUrl) {
     return `${reciter.surahBaseUrl}${pad3(surahNumber)}.mp3`;
   }
-  // للقراء "ayah" نوفر بديل من mp3quran للسورة الكاملة عبر السيرفرات الشهيرة
+  // بديل من mp3quran للقراء بدون surahBaseUrl
   if (reciterId === "ar.yasser") return `https://server11.mp3quran.net/yasser/${pad3(surahNumber)}.mp3`;
   if (reciterId === "ar.maher") return `https://server12.mp3quran.net/maher/${pad3(surahNumber)}.mp3`;
   return "";
