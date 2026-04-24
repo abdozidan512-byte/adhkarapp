@@ -1,5 +1,5 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { Sparkles, BookOpen, Compass, Settings, Sun, Moon } from "lucide-react";
+import { Sparkles, BookOpen, Compass, Settings, Sun, Moon, BookHeart } from "lucide-react";
 import { PrayerTimesCard } from "@/components/PrayerTimesCard";
 import { ContinueReading } from "@/components/ContinueReading";
 import { useTheme } from "@/contexts/ThemeContext";
@@ -56,6 +56,7 @@ function HomePage() {
         <div className="grid grid-cols-2 gap-3">
           <QuickCard to="/azkar" icon={Sparkles} title="الأذكار" subtitle="صباح، مساء، نوم..." gold />
           <QuickCard to="/quran" icon={BookOpen} title="المصحف" subtitle="114 سورة + قراء" />
+          <QuickCard to="/hadith" icon={BookHeart} title="الأحاديث" subtitle="من البخاري ومسلم" />
           <QuickCard to="/qibla" icon={Compass} title="القبلة" subtitle="بوصلة دقيقة" />
           <QuickCard to="/settings" icon={Settings} title="الإعدادات" subtitle="ثيم، إشعارات، APK" />
         </div>
