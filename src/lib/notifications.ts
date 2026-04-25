@@ -1,11 +1,24 @@
 import { useEffect, useState } from "react";
+import type { LocalNotificationSchema } from "@capacitor/local-notifications";
 import { getSetting } from "./db";
 import { fetchPrayerTimes, getUserCoords, prayerArabic, type PrayerName } from "./prayer";
 
 const STORAGE_KEY = "notifications-enabled";
-const SCHEDULED_KEY = "notif-scheduled-day";
+const SCHEDULED_KEY = "notif-scheduled-until";
+const SCHEDULED_COUNT_KEY = "notif-scheduled-count";
 const TYPES_KEY = "notif-types";
-const BACKGROUND_SCHEDULE_DAYS = 7;
+const BACKGROUND_SCHEDULE_DAYS = 30;
+const MIN_PENDING_NATIVE_NOTIFICATIONS = 20;
+const NATIVE_CHANNEL_ID = "noor-daily-reminders";
+const NATIVE_CHUNK_SIZE = 64;
+
+type NativeNotifications = typeof import("@capacitor/local-notifications").LocalNotifications;
+
+type NotificationJob = {
+  date: Date;
+  title: string;
+  body: string;
+};
 
 export type NotifType =
   | "prayerReminder"
@@ -42,10 +55,61 @@ async function getReminderMinutes(fallback = 15) {
   return (await getSetting<number>("reminderMin")) ?? fallback;
 }
 
+async function getNativeNotifications(): Promise<NativeNotifications | null> {
+  try {
+    const { Capacitor } = await import("@capacitor/core");
+    if (!Capacitor.isNativePlatform()) return null;
+    const { LocalNotifications } = await import("@capacitor/local-notifications");
+    return LocalNotifications;
+  } catch {
+    return null;
+  }
+}
+
+async function ensureNativeChannel(LocalNotifications: NativeNotifications) {
+  await LocalNotifications.createChannel({
+    id: NATIVE_CHANNEL_ID,
+    name: "تذكيرات نور اليومية",
+    description: "مواقيت الصلاة وأذكار الصباح والمساء",
+    importance: 5,
+    visibility: 1,
+    lights: true,
+    lightColor: "#1a3d2e",
+    vibration: true,
+  }).catch(() => undefined);
+}
+
+async function ensureExactAlarmSetting(LocalNotifications: NativeNotifications, promptUser: boolean) {
+  try {
+    const status = await LocalNotifications.checkExactNotificationSetting();
+    if (status.exact_alarm !== "granted" && promptUser) {
+      await LocalNotifications.changeExactNotificationSetting().catch(() => undefined);
+    }
+  } catch {}
+}
+
+async function ensureNativeReady(promptExactAlarm: boolean): Promise<NativeNotifications | null> {
+  const LocalNotifications = await getNativeNotifications();
+  if (!LocalNotifications) return null;
+
+  let permission = await LocalNotifications.checkPermissions().catch(() => null);
+  if (permission?.display !== "granted") {
+    permission = await LocalNotifications.requestPermissions().catch(() => null);
+  }
+  if (permission?.display !== "granted") return null;
+
+  await ensureNativeChannel(LocalNotifications);
+  await ensureExactAlarmSetting(LocalNotifications, promptExactAlarm);
+  return LocalNotifications;
+}
+
 async function getServiceWorkerRegistration() {
   if (typeof window === "undefined" || !("serviceWorker" in navigator)) return null;
   try {
-    return (await navigator.serviceWorker.getRegistration()) ?? null;
+    const existing = await navigator.serviceWorker.getRegistration();
+    if (existing) return existing;
+    await navigator.serviceWorker.register("/sw.js");
+    return await navigator.serviceWorker.ready;
   } catch {
     return null;
   }
@@ -62,10 +126,17 @@ function addDays(base: Date, days: number) {
 }
 
 function buildPrayerDate(time: string, baseDate: Date) {
-  const [h, m] = time.split(":").map(Number);
+  const match = time.match(/(\d{1,2}):(\d{2})/);
   const next = new Date(baseDate);
-  next.setHours(h, m, 0, 0);
+  if (!match) return new Date(Number.NaN);
+  next.setHours(Number(match[1]), Number(match[2]), 0, 0);
   return next;
+}
+
+function pushJob(jobs: NotificationJob[], date: Date, title: string, body: string) {
+  if (Number.isFinite(date.getTime())) {
+    jobs.push({ date, title, body });
+  }
 }
 
 function loadTypes(): NotifTypes {
@@ -98,26 +169,23 @@ export function useNotifications() {
   }, []);
 
   async function requestPermission() {
-    try {
-      const { Capacitor } = await import("@capacitor/core");
-      if (Capacitor.isNativePlatform()) {
-        const { LocalNotifications } = await import("@capacitor/local-notifications");
-        const res = await LocalNotifications.requestPermissions();
-        const granted = res.display === "granted";
-        setPermission(granted ? "granted" : "denied");
-        return granted;
-      }
-    } catch {}
+    const native = await ensureNativeReady(true);
+    if (native) {
+      setPermission("granted");
+      return true;
+    }
+
     if (typeof Notification === "undefined") return false;
     const p = await Notification.requestPermission();
     setPermission(p);
+    if (p === "granted") await getServiceWorkerRegistration();
     return p === "granted";
   }
 
   function setEnabled(v: boolean) {
     localStorage.setItem(STORAGE_KEY, v ? "1" : "0");
     setEnabledState(v);
-    if (!v) clearScheduled();
+    if (!v) void clearAllScheduledNotifications();
   }
 
   function setType(type: NotifType, value: boolean) {
@@ -143,30 +211,51 @@ function clearScheduled() {
   timers = [];
 }
 
-// إشعار فوري — يستخدم Service Worker إن أمكن (أفضل لأنه يعمل حتى لو أُغلقت نافذة التطبيق)
-async function showNotificationNow(title: string, body: string) {
-  // Capacitor (APK)
-  try {
-    const { Capacitor } = await import("@capacitor/core");
-    if (Capacitor.isNativePlatform()) {
-      const { LocalNotifications } = await import("@capacitor/local-notifications");
-      await LocalNotifications.schedule({
-        notifications: [
-          {
-            id: Math.floor(Math.random() * 2147483647),
-            title,
-            body,
-            schedule: { at: new Date(Date.now() + 100) },
-          },
-        ],
-      });
-      return;
+export async function clearAllScheduledNotifications() {
+  clearScheduled();
+  if (typeof localStorage !== "undefined") {
+    localStorage.removeItem(SCHEDULED_KEY);
+    localStorage.removeItem(SCHEDULED_COUNT_KEY);
+  }
+
+  const native = await getNativeNotifications();
+  if (native) {
+    const pending = await native.getPending().catch(() => ({ notifications: [] }));
+    if (pending.notifications.length > 0) {
+      await native.cancel({ notifications: pending.notifications }).catch(() => undefined);
     }
-  } catch {}
+    return;
+  }
+
+  if ("serviceWorker" in navigator) {
+    const reg = await getServiceWorkerRegistration();
+    const existing = await reg?.getNotifications({ includeTriggered: false } as any).catch(() => []);
+    existing?.forEach((n) => n.close());
+  }
+}
+
+async function showNotificationNow(title: string, body: string) {
+  const native = await ensureNativeReady(false);
+  if (native) {
+    await native.schedule({
+      notifications: [
+        {
+          id: createNotificationId({ date: new Date(), title, body }),
+          title,
+          body,
+          channelId: NATIVE_CHANNEL_ID,
+          smallIcon: "ic_stat_icon",
+          iconColor: "#1a3d2e",
+          autoCancel: true,
+          schedule: { at: new Date(Date.now() + 100), allowWhileIdle: true },
+        },
+      ],
+    });
+    return;
+  }
 
   if (typeof Notification === "undefined" || Notification.permission !== "granted") return;
 
-  // PWA: استخدم SW إن أمكن
   if ("serviceWorker" in navigator) {
     try {
       const reg = await getServiceWorkerRegistration();
@@ -177,6 +266,7 @@ async function showNotificationNow(title: string, body: string) {
           badge: "/icon-192.png",
           tag: title,
           vibrate: [200, 100, 200],
+          requireInteraction: true,
         } as any);
         return;
       }
@@ -184,51 +274,51 @@ async function showNotificationNow(title: string, body: string) {
   }
 
   try {
-    new Notification(title, { body, icon: "/icon-192.png", badge: "/icon-192.png", tag: title });
+    new Notification(title, { body, icon: "/icon-192.png", badge: "/icon-192.png", tag: title, requireInteraction: true });
   } catch {}
 }
 
-// جدولة أصلية على Capacitor
-async function scheduleNative(date: Date, title: string, body: string): Promise<boolean> {
-  try {
-    const { Capacitor } = await import("@capacitor/core");
-    if (!Capacitor.isNativePlatform()) return false;
-    const { LocalNotifications } = await import("@capacitor/local-notifications");
-    await LocalNotifications.schedule({
-      notifications: [
-        {
-          id: Math.floor(Math.random() * 2147483647),
-          title,
-          body,
-          schedule: { at: date, allowWhileIdle: true },
-        },
-      ],
-    });
-    return true;
-  } catch {
-    return false;
+function createNotificationId(job: NotificationJob) {
+  let hash = Math.floor(job.date.getTime() / 60000);
+  const text = `${job.title}|${job.body}`;
+  for (let i = 0; i < text.length; i += 1) {
+    hash = (hash * 31 + text.charCodeAt(i)) | 0;
   }
+  return Math.abs(hash % 2147483000) + 1;
 }
 
-// جدولة عبر Notification Triggers API (Chrome على Android — تعمل حتى لو أُغلق التطبيق)
-async function scheduleViaTrigger(date: Date, title: string, body: string): Promise<boolean> {
-  if (!("serviceWorker" in navigator)) return false;
-  if (typeof (window as any).TimestampTrigger === "undefined") return false;
-  try {
-    const reg = await getServiceWorkerRegistration();
-    if (!reg) return false;
-    await reg.showNotification(title, {
-      body,
-      icon: "/icon-192.png",
-      badge: "/icon-192.png",
-      tag: `${title}-${date.getTime()}`,
-      showTrigger: new (window as any).TimestampTrigger(date.getTime()),
-      vibrate: [200, 100, 200],
-    } as any);
-    return true;
-  } catch (e) {
-    console.warn("TimestampTrigger failed:", e);
-    return false;
+function toNativeNotification(job: NotificationJob): LocalNotificationSchema {
+  return {
+    id: createNotificationId(job),
+    title: job.title,
+    body: job.body,
+    largeBody: job.body,
+    summaryText: "نور",
+    channelId: NATIVE_CHANNEL_ID,
+    smallIcon: "ic_stat_icon",
+    iconColor: "#1a3d2e",
+    autoCancel: true,
+    schedule: { at: job.date, allowWhileIdle: true },
+  };
+}
+
+async function scheduleNativeBatch(jobs: NotificationJob[], LocalNotifications: NativeNotifications) {
+  if (jobs.length === 0) return;
+  await ensureNativeChannel(LocalNotifications);
+  const notifications = jobs.map(toNativeNotification);
+
+  for (let i = 0; i < notifications.length; i += NATIVE_CHUNK_SIZE) {
+    const chunk = notifications.slice(i, i + NATIVE_CHUNK_SIZE);
+    try {
+      await LocalNotifications.schedule({ notifications: chunk });
+    } catch {
+      await LocalNotifications.schedule({
+        notifications: chunk.map((notification) => ({
+          ...notification,
+          schedule: notification.schedule ? { ...notification.schedule, allowWhileIdle: false } : notification.schedule,
+        })),
+      });
+    }
   }
 }
 
@@ -237,24 +327,18 @@ type ScheduleResult = "native" | "trigger" | "timeout" | "skipped";
 export async function scheduleAllNotifications(reminderMin = 15) {
   if (typeof window === "undefined") return;
 
-  let isNative = false;
-  try {
-    const { Capacitor } = await import("@capacitor/core");
-    isNative = Capacitor.isNativePlatform();
-    if (isNative) {
-      const { LocalNotifications } = await import("@capacitor/local-notifications");
-      const pending = await LocalNotifications.getPending();
-      if (pending.notifications.length > 0) {
-        await LocalNotifications.cancel({ notifications: pending.notifications });
-      }
-    }
-  } catch {}
+  const native = await ensureNativeReady(false);
+  const isNative = Boolean(native);
 
   if (!isNative && (typeof Notification === "undefined" || Notification.permission !== "granted")) return;
   clearScheduled();
 
-  // امسح إشعارات SW المجدولة سابقاً
-  if (!isNative && "serviceWorker" in navigator) {
+  if (native) {
+    const pending = await native.getPending().catch(() => ({ notifications: [] }));
+    if (pending.notifications.length > 0) {
+      await native.cancel({ notifications: pending.notifications }).catch(() => undefined);
+    }
+  } else if ("serviceWorker" in navigator) {
     try {
       const reg = await getServiceWorkerRegistration();
       if (reg) {
@@ -271,7 +355,7 @@ export async function scheduleAllNotifications(reminderMin = 15) {
     const today = new Date();
     const supportsBackgroundScheduling = isNative || supportsTimestampTrigger();
     const daysToSchedule = supportsBackgroundScheduling ? BACKGROUND_SCHEDULE_DAYS : 1;
-    const jobs: Promise<ScheduleResult>[] = [];
+    const jobs: NotificationJob[] = [];
     const order: PrayerName[] = ["Fajr", "Dhuhr", "Asr", "Maghrib", "Isha"];
 
     for (let dayOffset = 0; dayOffset < daysToSchedule; dayOffset += 1) {
@@ -283,41 +367,44 @@ export async function scheduleAllNotifications(reminderMin = 15) {
 
         if (types.prayerReminder) {
           const remTime = new Date(prayerDate.getTime() - reminderMin * 60 * 1000);
-          jobs.push(
-            scheduleAt(
-              remTime,
-              `🕌 تذكير: ${prayerArabic[name]}`,
-              `بقي ${reminderMin} دقيقة على ${prayerArabic[name]}`
-            )
-          );
+          pushJob(jobs, remTime, `🕌 تذكير: ${prayerArabic[name]}`, `بقي ${reminderMin} دقيقة على ${prayerArabic[name]}`);
         }
 
         if (types.prayerTime) {
-          jobs.push(scheduleAt(prayerDate, `🕌 حان وقت ${prayerArabic[name]}`, "حيّ على الصلاة، حيّ على الفلاح"));
+          pushJob(jobs, prayerDate, `🕌 حان وقت ${prayerArabic[name]}`, "حيّ على الصلاة، حيّ على الفلاح");
         }
 
         if (types.afterPrayer) {
           const after = new Date(prayerDate.getTime() + 5 * 60 * 1000);
-          jobs.push(scheduleAt(after, "✨ أذكار بعد الصلاة", "لا تنسَ أذكار ما بعد الصلاة"));
+          pushJob(jobs, after, "✨ أذكار بعد الصلاة", "لا تنسَ أذكار ما بعد الصلاة");
         }
       });
 
       if (types.morning) {
         const morning = new Date(buildPrayerDate(timings.Fajr, scheduleDate).getTime() + 30 * 60 * 1000);
-        jobs.push(scheduleAt(morning, "🌅 أذكار الصباح", "ابدأ يومك بذكر الله"));
+        pushJob(jobs, morning, "🌅 أذكار الصباح", "ابدأ يومك بذكر الله");
       }
 
       if (types.evening) {
         const evening = buildPrayerDate(timings.Asr, scheduleDate);
-        jobs.push(scheduleAt(evening, "🌙 أذكار المساء", "اختم نهارك بذكر الله"));
+        pushJob(jobs, evening, "🌙 أذكار المساء", "اختم نهارك بذكر الله");
       }
     }
 
-    const results = await Promise.all(jobs);
+    const futureJobs = jobs.filter((job) => job.date.getTime() > Date.now() + 500);
+    let results: ScheduleResult[] = [];
+
+    if (native) {
+      await scheduleNativeBatch(futureJobs, native);
+      results = futureJobs.map(() => "native");
+    } else {
+      results = await Promise.all(futureJobs.map((job) => scheduleAt(job.date, job.title, job.body)));
+    }
 
     localStorage.setItem(SCHEDULED_KEY, getScheduleKey(addDays(today, daysToSchedule - 1)));
+    localStorage.setItem(SCHEDULED_COUNT_KEY, String(futureJobs.length));
     if (results.some((result) => result !== "skipped")) {
-      console.info("Notifications scheduled", results);
+      console.info("Notifications scheduled", results.length, results[0]);
     }
   } catch (e) {
     console.error("Failed to schedule notifications", e);
@@ -327,20 +414,38 @@ export async function scheduleAllNotifications(reminderMin = 15) {
 async function scheduleAt(date: Date, title: string, body: string): Promise<ScheduleResult> {
   const ms = date.getTime() - Date.now();
   if (ms <= 0) return "skipped";
-  // 1) جرّب Capacitor (APK) أولاً
-  const native = await scheduleNative(date, title, body);
-  if (native) return "native";
-  // 2) جرّب Notification Triggers (Chrome Android — يعمل بدون فتح التطبيق)
+
   const triggered = await scheduleViaTrigger(date, title, body);
   if (triggered) return "trigger";
-  // 3) احتياط: setTimeout (يعمل فقط ما دام التطبيق مفتوحاً)
+
   if (ms > 24 * 60 * 60 * 1000) return "skipped";
   const id = window.setTimeout(() => showNotificationNow(title, body), ms);
   timers.push(id);
   return "timeout";
 }
 
-// إشعار اختبار فوري — للتحقق من أن الإشعارات تعمل
+async function scheduleViaTrigger(date: Date, title: string, body: string): Promise<boolean> {
+  if (!("serviceWorker" in navigator)) return false;
+  if (typeof (window as any).TimestampTrigger === "undefined") return false;
+  try {
+    const reg = await getServiceWorkerRegistration();
+    if (!reg) return false;
+    await reg.showNotification(title, {
+      body,
+      icon: "/icon-192.png",
+      badge: "/icon-192.png",
+      tag: `${title}-${date.getTime()}`,
+      showTrigger: new (window as any).TimestampTrigger(date.getTime()),
+      vibrate: [200, 100, 200],
+      requireInteraction: true,
+    } as any);
+    return true;
+  } catch (e) {
+    console.warn("TimestampTrigger failed:", e);
+    return false;
+  }
+}
+
 export async function testNotification() {
   await showNotificationNow("🔔 اختبار الإشعار", "إشعارات نور تعمل بنجاح، بارك الله فيك");
 }
@@ -348,19 +453,29 @@ export async function testNotification() {
 export async function ensureDailySchedule(reminderMin = 15) {
   if (typeof window === "undefined") return;
   if (localStorage.getItem(STORAGE_KEY) !== "1") return;
-  let isNative = false;
-  try {
-    const { Capacitor } = await import("@capacitor/core");
-    isNative = Capacitor.isNativePlatform();
-  } catch {}
-  if (!isNative && (typeof Notification === "undefined" || Notification.permission !== "granted")) return;
+
+  const native = await getNativeNotifications();
+  const isNative = Boolean(native);
+
+  if (native) {
+    const permissions = await native.checkPermissions().catch(() => null);
+    if (permissions?.display !== "granted") return;
+    await ensureNativeChannel(native);
+    await ensureExactAlarmSetting(native, false);
+  } else if (typeof Notification === "undefined" || Notification.permission !== "granted") {
+    return;
+  }
+
   const savedReminderMin = await getReminderMinutes(reminderMin);
   const last = localStorage.getItem(SCHEDULED_KEY);
   const scheduledUntil = getScheduleKey(
     addDays(new Date(), isNative || supportsTimestampTrigger() ? BACKGROUND_SCHEDULE_DAYS - 1 : 0)
   );
   const needsFreshSchedule = !isNative && !supportsTimestampTrigger();
-  if (needsFreshSchedule || last !== scheduledUntil) {
+  const nativePending = native ? await native.getPending().catch(() => ({ notifications: [] })) : null;
+  const nativeScheduleMissing = Boolean(native && nativePending && nativePending.notifications.length < MIN_PENDING_NATIVE_NOTIFICATIONS);
+
+  if (needsFreshSchedule || nativeScheduleMissing || last !== scheduledUntil) {
     await scheduleAllNotifications(savedReminderMin);
   }
 }
