@@ -1,8 +1,15 @@
 import { useEffect, useRef, useState, Fragment, type ReactNode } from "react";
 import useEmblaCarousel from "embla-carousel-react";
-import { ChevronLeft, ChevronRight, RefreshCw, Sparkles, Play, Pause, Loader2 } from "lucide-react";
+import { ChevronLeft, ChevronRight, RefreshCw, Sparkles, Play, Pause, Loader2, Rewind, FastForward, Gauge } from "lucide-react";
 import type { Zikr } from "@/data/azkar";
 import { azkarSectionAudio } from "@/data/azkar-audio";
+
+function fmt(t: number) {
+  if (!isFinite(t) || t < 0) t = 0;
+  const m = Math.floor(t / 60);
+  const s = Math.floor(t % 60);
+  return `${m}:${s.toString().padStart(2, "0")}`;
+}
 
 // Renders text with [[N]] markers replaced by golden numbered circles.
 function renderWithAyahNumbers(text: string): ReactNode {
@@ -52,6 +59,10 @@ export function ZikrCarousel({ items, title, sectionId }: { items: Zikr[]; title
   const [playing, setPlaying] = useState(false);
   const [loading, setLoading] = useState(false);
   const [audioError, setAudioError] = useState<string | null>(null);
+  const [currentTime, setCurrentTime] = useState(0);
+  const [duration, setDuration] = useState(0);
+  const [rate, setRate] = useState(1);
+  const [seeking, setSeeking] = useState(false);
 
   useEffect(() => {
     setCounts(items.map((it) => it.count));
@@ -63,12 +74,17 @@ export function ZikrCarousel({ items, title, sectionId }: { items: Zikr[]; title
   useEffect(() => {
     if (!audioInfo) return;
     const a = new Audio(audioInfo.url);
-    a.preload = "none";
+    a.preload = "metadata";
     a.onended = () => setPlaying(false);
     a.onpause = () => setPlaying(false);
     a.onplay = () => setPlaying(true);
     a.onwaiting = () => setLoading(true);
     a.oncanplay = () => setLoading(false);
+    a.onloadedmetadata = () => setDuration(a.duration || 0);
+    a.ondurationchange = () => setDuration(a.duration || 0);
+    a.ontimeupdate = () => {
+      if (!seekingRef.current) setCurrentTime(a.currentTime);
+    };
     a.onerror = () => {
       setAudioError("تعذّر تحميل الصوت — تحقق من الاتصال");
       setPlaying(false);
@@ -81,8 +97,14 @@ export function ZikrCarousel({ items, title, sectionId }: { items: Zikr[]; title
       audioRef.current = null;
       setPlaying(false);
       setLoading(false);
+      setCurrentTime(0);
+      setDuration(0);
     };
   }, [audioInfo]);
+
+  // ref mirror for seeking flag (avoids stale closure inside ontimeupdate)
+  const seekingRef = useRef(false);
+  useEffect(() => { seekingRef.current = seeking; }, [seeking]);
 
   async function toggleSectionPlay() {
     if (!audioRef.current) return;
@@ -98,6 +120,32 @@ export function ZikrCarousel({ items, title, sectionId }: { items: Zikr[]; title
       setAudioError("تعذّر تشغيل الصوت");
       setLoading(false);
     }
+  }
+
+  function skip(delta: number) {
+    const a = audioRef.current;
+    if (!a) return;
+    const next = Math.min(Math.max((a.currentTime || 0) + delta, 0), duration || a.duration || 0);
+    a.currentTime = next;
+    setCurrentTime(next);
+  }
+
+  function changeRate() {
+    const rates = [1, 1.25, 1.5, 0.75];
+    const idx = rates.indexOf(rate);
+    const nr = rates[(idx + 1) % rates.length];
+    setRate(nr);
+    if (audioRef.current) audioRef.current.playbackRate = nr;
+  }
+
+  function onSeekChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const v = Number(e.target.value);
+    setCurrentTime(v);
+  }
+  function onSeekCommit(e: React.SyntheticEvent<HTMLInputElement>) {
+    const v = Number((e.target as HTMLInputElement).value);
+    if (audioRef.current) audioRef.current.currentTime = v;
+    setSeeking(false);
   }
 
   useEffect(() => {
@@ -149,37 +197,93 @@ export function ZikrCarousel({ items, title, sectionId }: { items: Zikr[]; title
 
         {audioInfo && (
           <div
-            className="mt-3 flex items-center gap-3 rounded-2xl border p-2.5"
+            className="mt-3 rounded-2xl border p-3"
             style={{
               background: "color-mix(in oklab, var(--gold) 8%, transparent)",
               borderColor: "color-mix(in oklab, var(--gold) 35%, transparent)",
             }}
           >
-            <button
-              onClick={toggleSectionPlay}
-              disabled={loading}
-              className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl active:scale-95 disabled:opacity-60"
-              style={{
-                background: "var(--gradient-gold)",
-                color: "var(--gold-foreground)",
-                boxShadow: "var(--shadow-gold)",
-              }}
-              aria-label={playing ? "إيقاف" : "تشغيل"}
-            >
-              {loading ? (
-                <Loader2 className="h-5 w-5 animate-spin" />
-              ) : playing ? (
-                <Pause className="h-5 w-5" />
-              ) : (
-                <Play className="h-5 w-5" />
-              )}
-            </button>
-            <div className="min-w-0 flex-1">
-              <p className="truncate text-xs font-extrabold">{audioInfo.label}</p>
-              <p className="truncate text-[10px] text-muted-foreground">
-                {audioError ?? (playing ? "جارٍ التشغيل..." : "اضغط للاستماع للقسم كاملاً")}
-              </p>
+            {/* Title row */}
+            <div className="mb-2 flex items-center justify-between gap-2">
+              <p className="min-w-0 flex-1 truncate text-xs font-extrabold">{audioInfo.label}</p>
+              <button
+                onClick={changeRate}
+                className="flex h-7 shrink-0 items-center gap-1 rounded-lg border bg-card px-2 text-[10px] font-extrabold"
+                aria-label="سرعة التشغيل"
+              >
+                <Gauge className="h-3 w-3" />
+                {rate}x
+              </button>
             </div>
+
+            {/* Seek bar */}
+            <div className="flex items-center gap-2">
+              <span className="w-9 text-[10px] tabular-nums text-muted-foreground">{fmt(currentTime)}</span>
+              <input
+                type="range"
+                min={0}
+                max={Math.max(duration, 0.001)}
+                step={0.1}
+                value={Math.min(currentTime, duration || 0)}
+                onChange={onSeekChange}
+                onPointerDown={() => setSeeking(true)}
+                onPointerUp={onSeekCommit}
+                onTouchStart={() => setSeeking(true)}
+                onTouchEnd={onSeekCommit}
+                onMouseDown={() => setSeeking(true)}
+                onMouseUp={onSeekCommit}
+                className="zikr-seek h-2 flex-1 cursor-pointer appearance-none rounded-full"
+                style={{
+                  background: `linear-gradient(to left, var(--gold) ${
+                    duration ? (currentTime / duration) * 100 : 0
+                  }%, color-mix(in oklab, var(--muted-foreground) 25%, transparent) ${
+                    duration ? (currentTime / duration) * 100 : 0
+                  }%)`,
+                }}
+              />
+              <span className="w-9 text-[10px] tabular-nums text-muted-foreground">{fmt(duration)}</span>
+            </div>
+
+            {/* Controls */}
+            <div className="mt-2 flex items-center justify-center gap-3">
+              <button
+                onClick={() => skip(-5)}
+                className="flex h-10 w-10 items-center justify-center rounded-xl border bg-card active:scale-95"
+                aria-label="رجوع 5 ثواني"
+              >
+                <Rewind className="h-4 w-4" />
+              </button>
+              <button
+                onClick={toggleSectionPlay}
+                disabled={loading}
+                className="flex h-12 w-12 items-center justify-center rounded-2xl active:scale-95 disabled:opacity-60"
+                style={{
+                  background: "var(--gradient-gold)",
+                  color: "var(--gold-foreground)",
+                  boxShadow: "var(--shadow-gold)",
+                }}
+                aria-label={playing ? "إيقاف" : "تشغيل"}
+              >
+                {loading ? (
+                  <Loader2 className="h-5 w-5 animate-spin" />
+                ) : playing ? (
+                  <Pause className="h-5 w-5" />
+                ) : (
+                  <Play className="h-5 w-5" />
+                )}
+              </button>
+              <button
+                onClick={() => skip(5)}
+                className="flex h-10 w-10 items-center justify-center rounded-xl border bg-card active:scale-95"
+                aria-label="تقديم 5 ثواني"
+              >
+                <FastForward className="h-4 w-4" />
+              </button>
+            </div>
+
+            {audioError && (
+              <p className="mt-2 text-center text-[10px] text-destructive">{audioError}</p>
+            )}
           </div>
         )}
       </div>

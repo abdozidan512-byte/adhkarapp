@@ -205,3 +205,19 @@
 /* Hide scrollbar but keep functional */
 .hide-scrollbar::-webkit-scrollbar { display: none; }
 .hide-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+
+/* Audio seek bar (YouTube-like) */
+.zikr-seek { -webkit-appearance: none; appearance: none; outline: none; }
+.zikr-seek::-webkit-slider-thumb {
+  -webkit-appearance: none; appearance: none;
+  width: 16px; height: 16px; border-radius: 9999px;
+  background: var(--gold); border: 2px solid var(--gold-foreground);
+  box-shadow: var(--shadow-gold); cursor: pointer;
+}
+.zikr-seek::-moz-range-thumb {
+  width: 16px; height: 16px; border-radius: 9999px;
+  background: var(--gold); border: 2px solid var(--gold-foreground);
+  box-shadow: var(--shadow-gold); cursor: pointer;
+}
+.zikr-seek::-webkit-slider-runnable-track { height: 8px; border-radius: 9999px; background: transparent; }
+.zikr-seek::-moz-range-track { height: 8px; border-radius: 9999px; background: transparent; }
