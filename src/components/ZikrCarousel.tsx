@@ -1,8 +1,15 @@
 import { useEffect, useRef, useState, Fragment, type ReactNode } from "react";
 import useEmblaCarousel from "embla-carousel-react";
-import { ChevronLeft, ChevronRight, RefreshCw, Sparkles, Play, Pause, Loader2 } from "lucide-react";
+import { ChevronLeft, ChevronRight, RefreshCw, Sparkles, Play, Pause, Loader2, Rewind, FastForward, Gauge } from "lucide-react";
 import type { Zikr } from "@/data/azkar";
 import { azkarSectionAudio } from "@/data/azkar-audio";
+
+function fmt(t: number) {
+  if (!isFinite(t) || t < 0) t = 0;
+  const m = Math.floor(t / 60);
+  const s = Math.floor(t % 60);
+  return `${m}:${s.toString().padStart(2, "0")}`;
+}
 
 // Renders text with [[N]] markers replaced by golden numbered circles.
 function renderWithAyahNumbers(text: string): ReactNode {
