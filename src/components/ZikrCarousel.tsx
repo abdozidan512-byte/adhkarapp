@@ -197,37 +197,93 @@ export function ZikrCarousel({ items, title, sectionId }: { items: Zikr[]; title
 
         {audioInfo && (
           <div
-            className="mt-3 flex items-center gap-3 rounded-2xl border p-2.5"
+            className="mt-3 rounded-2xl border p-3"
             style={{
               background: "color-mix(in oklab, var(--gold) 8%, transparent)",
               borderColor: "color-mix(in oklab, var(--gold) 35%, transparent)",
             }}
           >
-            <button
-              onClick={toggleSectionPlay}
-              disabled={loading}
-              className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl active:scale-95 disabled:opacity-60"
-              style={{
-                background: "var(--gradient-gold)",
-                color: "var(--gold-foreground)",
-                boxShadow: "var(--shadow-gold)",
-              }}
-              aria-label={playing ? "إيقاف" : "تشغيل"}
-            >
-              {loading ? (
-                <Loader2 className="h-5 w-5 animate-spin" />
-              ) : playing ? (
-                <Pause className="h-5 w-5" />
-              ) : (
-                <Play className="h-5 w-5" />
-              )}
-            </button>
-            <div className="min-w-0 flex-1">
-              <p className="truncate text-xs font-extrabold">{audioInfo.label}</p>
-              <p className="truncate text-[10px] text-muted-foreground">
-                {audioError ?? (playing ? "جارٍ التشغيل..." : "اضغط للاستماع للقسم كاملاً")}
-              </p>
+            {/* Title row */}
+            <div className="mb-2 flex items-center justify-between gap-2">
+              <p className="min-w-0 flex-1 truncate text-xs font-extrabold">{audioInfo.label}</p>
+              <button
+                onClick={changeRate}
+                className="flex h-7 shrink-0 items-center gap-1 rounded-lg border bg-card px-2 text-[10px] font-extrabold"
+                aria-label="سرعة التشغيل"
+              >
+                <Gauge className="h-3 w-3" />
+                {rate}x
+              </button>
             </div>
+
+            {/* Seek bar */}
+            <div className="flex items-center gap-2">
+              <span className="w-9 text-[10px] tabular-nums text-muted-foreground">{fmt(currentTime)}</span>
+              <input
+                type="range"
+                min={0}
+                max={Math.max(duration, 0.001)}
+                step={0.1}
+                value={Math.min(currentTime, duration || 0)}
+                onChange={onSeekChange}
+                onPointerDown={() => setSeeking(true)}
+                onPointerUp={onSeekCommit}
+                onTouchStart={() => setSeeking(true)}
+                onTouchEnd={onSeekCommit}
+                onMouseDown={() => setSeeking(true)}
+                onMouseUp={onSeekCommit}
+                className="zikr-seek h-2 flex-1 cursor-pointer appearance-none rounded-full"
+                style={{
+                  background: `linear-gradient(to left, var(--gold) ${
+                    duration ? (currentTime / duration) * 100 : 0
+                  }%, color-mix(in oklab, var(--muted-foreground) 25%, transparent) ${
+                    duration ? (currentTime / duration) * 100 : 0
+                  }%)`,
+                }}
+              />
+              <span className="w-9 text-[10px] tabular-nums text-muted-foreground">{fmt(duration)}</span>
+            </div>
+
+            {/* Controls */}
+            <div className="mt-2 flex items-center justify-center gap-3">
+              <button
+                onClick={() => skip(-5)}
+                className="flex h-10 w-10 items-center justify-center rounded-xl border bg-card active:scale-95"
+                aria-label="رجوع 5 ثواني"
+              >
+                <Rewind className="h-4 w-4" />
+              </button>
+              <button
+                onClick={toggleSectionPlay}
+                disabled={loading}
+                className="flex h-12 w-12 items-center justify-center rounded-2xl active:scale-95 disabled:opacity-60"
+                style={{
+                  background: "var(--gradient-gold)",
+                  color: "var(--gold-foreground)",
+                  boxShadow: "var(--shadow-gold)",
+                }}
+                aria-label={playing ? "إيقاف" : "تشغيل"}
+              >
+                {loading ? (
+                  <Loader2 className="h-5 w-5 animate-spin" />
+                ) : playing ? (
+                  <Pause className="h-5 w-5" />
+                ) : (
+                  <Play className="h-5 w-5" />
+                )}
+              </button>
+              <button
+                onClick={() => skip(5)}
+                className="flex h-10 w-10 items-center justify-center rounded-xl border bg-card active:scale-95"
+                aria-label="تقديم 5 ثواني"
+              >
+                <FastForward className="h-4 w-4" />
+              </button>
+            </div>
+
+            {audioError && (
+              <p className="mt-2 text-center text-[10px] text-destructive">{audioError}</p>
+            )}
           </div>
         )}
       </div>
