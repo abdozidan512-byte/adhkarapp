@@ -59,6 +59,10 @@ export function ZikrCarousel({ items, title, sectionId }: { items: Zikr[]; title
   const [playing, setPlaying] = useState(false);
   const [loading, setLoading] = useState(false);
   const [audioError, setAudioError] = useState<string | null>(null);
+  const [currentTime, setCurrentTime] = useState(0);
+  const [duration, setDuration] = useState(0);
+  const [rate, setRate] = useState(1);
+  const [seeking, setSeeking] = useState(false);
 
   useEffect(() => {
     setCounts(items.map((it) => it.count));
@@ -70,12 +74,17 @@ export function ZikrCarousel({ items, title, sectionId }: { items: Zikr[]; title
   useEffect(() => {
     if (!audioInfo) return;
     const a = new Audio(audioInfo.url);
-    a.preload = "none";
+    a.preload = "metadata";
     a.onended = () => setPlaying(false);
     a.onpause = () => setPlaying(false);
     a.onplay = () => setPlaying(true);
     a.onwaiting = () => setLoading(true);
     a.oncanplay = () => setLoading(false);
+    a.onloadedmetadata = () => setDuration(a.duration || 0);
+    a.ondurationchange = () => setDuration(a.duration || 0);
+    a.ontimeupdate = () => {
+      if (!seekingRef.current) setCurrentTime(a.currentTime);
+    };
     a.onerror = () => {
       setAudioError("تعذّر تحميل الصوت — تحقق من الاتصال");
       setPlaying(false);
@@ -88,8 +97,14 @@ export function ZikrCarousel({ items, title, sectionId }: { items: Zikr[]; title
       audioRef.current = null;
       setPlaying(false);
       setLoading(false);
+      setCurrentTime(0);
+      setDuration(0);
     };
   }, [audioInfo]);
+
+  // ref mirror for seeking flag (avoids stale closure inside ontimeupdate)
+  const seekingRef = useRef(false);
+  useEffect(() => { seekingRef.current = seeking; }, [seeking]);
 
   async function toggleSectionPlay() {
     if (!audioRef.current) return;
@@ -105,6 +120,32 @@ export function ZikrCarousel({ items, title, sectionId }: { items: Zikr[]; title
       setAudioError("تعذّر تشغيل الصوت");
       setLoading(false);
     }
+  }
+
+  function skip(delta: number) {
+    const a = audioRef.current;
+    if (!a) return;
+    const next = Math.min(Math.max((a.currentTime || 0) + delta, 0), duration || a.duration || 0);
+    a.currentTime = next;
+    setCurrentTime(next);
+  }
+
+  function changeRate() {
+    const rates = [1, 1.25, 1.5, 0.75];
+    const idx = rates.indexOf(rate);
+    const nr = rates[(idx + 1) % rates.length];
+    setRate(nr);
+    if (audioRef.current) audioRef.current.playbackRate = nr;
+  }
+
+  function onSeekChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const v = Number(e.target.value);
+    setCurrentTime(v);
+  }
+  function onSeekCommit(e: React.SyntheticEvent<HTMLInputElement>) {
+    const v = Number((e.target as HTMLInputElement).value);
+    if (audioRef.current) audioRef.current.currentTime = v;
+    setSeeking(false);
   }
 
   useEffect(() => {
