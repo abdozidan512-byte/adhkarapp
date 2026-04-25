@@ -277,7 +277,7 @@ export function ZikrCarousel({ items, title, sectionId }: { items: Zikr[]; title
                 className="flex h-10 w-10 items-center justify-center rounded-xl border bg-card active:scale-95"
                 aria-label="تقديم 5 ثواني"
               >
-                <FastForward className="h-4 w-4" />
+                <Rewind className="h-4 w-4" />
               </button>
             </div>
 
