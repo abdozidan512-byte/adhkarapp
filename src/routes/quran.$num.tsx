@@ -560,6 +560,34 @@ function SurahReader() {
           </div>
         </div>
       )}
+
+      {/* Tajweed legend modal */}
+      {showLegend && (
+        <div
+          className="fixed inset-0 z-[110] flex items-end justify-center bg-black/60"
+          onClick={() => setShowLegend(false)}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="w-full max-w-md rounded-t-3xl border p-5"
+            style={{ background: "var(--card)", paddingBottom: "calc(1.25rem + 5rem + env(safe-area-inset-bottom))" }}
+          >
+            <div className="mx-auto mb-4 h-1.5 w-12 rounded-full bg-muted" />
+            <h3 className="mb-3 text-lg font-extrabold">مفتاح ألوان التجويد</h3>
+            <div className="space-y-2">
+              {tajweedLegend.map((l) => (
+                <div key={l.label} className="flex items-center gap-3 rounded-xl border p-3">
+                  <span className="h-5 w-5 rounded-full" style={{ background: l.color }} />
+                  <span className="font-bold">{l.label}</span>
+                </div>
+              ))}
+            </div>
+            <p className="mt-3 text-[11px] text-muted-foreground">
+              الألوان مطابقة لمصحف المدينة المنورة برواية حفص عن عاصم.
+            </p>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
