@@ -625,6 +625,92 @@ function SurahReader() {
           </div>
         </div>
       )}
+
+      {/* Tafsir sheet */}
+      {tafsirAyah !== null && (
+        <div
+          className="fixed inset-0 z-[120] flex items-end justify-center bg-black/60"
+          onClick={() => setTafsirAyah(null)}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="flex max-h-[88vh] w-full max-w-md flex-col overflow-hidden rounded-t-3xl border"
+            style={{ background: "var(--card)" }}
+          >
+            <div className="flex items-center justify-between border-b p-4" style={{ background: "var(--gradient-hero)" }}>
+              <div className="flex items-center gap-2 text-primary-foreground">
+                <BookOpen className="h-5 w-5" />
+                <div>
+                  <p className="text-base font-extrabold">تفسير الآية {tafsirAyah}</p>
+                  <p className="text-[10px] opacity-80">سورة {meta.name}</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setTafsirAyah(null)}
+                className="flex h-8 w-8 items-center justify-center rounded-full bg-white/15 text-primary-foreground"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            {/* Edition tabs */}
+            <div className="flex gap-2 overflow-x-auto border-b px-3 py-2 hide-scrollbar">
+              {tafsirEditions.map((ed) => (
+                <button
+                  key={ed.id}
+                  onClick={() => setTafsirEdition(ed.id)}
+                  className={cn(
+                    "shrink-0 rounded-full border px-3 py-1.5 text-xs font-bold transition-all",
+                    tafsirEdition === ed.id ? "text-primary-foreground" : "bg-card"
+                  )}
+                  style={
+                    tafsirEdition === ed.id
+                      ? { background: "var(--gradient-primary)", borderColor: "transparent" }
+                      : undefined
+                  }
+                >
+                  {ed.shortName}
+                </button>
+              ))}
+            </div>
+
+            <div
+              className="flex-1 overflow-y-auto p-5"
+              style={{ paddingBottom: "calc(1.5rem + env(safe-area-inset-bottom))" }}
+            >
+              {/* الآية */}
+              {ayahs && (
+                <div
+                  className="mb-4 rounded-2xl border p-4 text-center font-quran leading-loose"
+                  style={{ background: "color-mix(in oklab, var(--gold) 8%, transparent)", fontSize: 22, lineHeight: 2.2 }}
+                >
+                  {ayahs.find((a) => a.numberInSurah === tafsirAyah)?.text}
+                  <span className="mx-2 inline-flex h-7 w-7 items-center justify-center rounded-full text-[11px] font-bold" style={{ background: "var(--gradient-gold)", color: "var(--gold-foreground)" }}>
+                    {tafsirAyah}
+                  </span>
+                </div>
+              )}
+
+              {/* التفسير */}
+              {tafsirLoading ? (
+                <div className="flex items-center justify-center py-8 text-muted-foreground">
+                  <Loader2 className="h-5 w-5 animate-spin" />
+                  <span className="mr-2">جاري تحميل التفسير...</span>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  <p className="text-xs font-bold text-muted-foreground">
+                    {tafsirEditions.find((e) => e.id === tafsirEdition)?.name}
+                  </p>
+                  <p className="text-base leading-loose" style={{ lineHeight: 2 }}>
+                    {tafsirData?.find((t) => t.numberInSurah === tafsirAyah)?.text || "التفسير غير متاح حالياً."}
+                  </p>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
