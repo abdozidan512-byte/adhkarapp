@@ -55,6 +55,10 @@ function SurahReader() {
   const [cachedKeys, setCachedKeys] = useState<Set<string>>(new Set());
   const [selectedAyahs, setSelectedAyahs] = useState<Set<number>>(new Set());
   const [showReciterSheet, setShowReciterSheet] = useState(false);
+  const [tajweedMode, setTajweedMode] = useState(false);
+  const [tajweedAyahs, setTajweedAyahs] = useState<TajweedAyah[] | null>(null);
+  const [tajweedLoading, setTajweedLoading] = useState(false);
+  const [showLegend, setShowLegend] = useState(false);
 
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const playQueueRef = useRef<number[]>([]);
