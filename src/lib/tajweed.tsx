@@ -5,37 +5,43 @@ export type TajweedAyah = { numberInSurah: number; text: string };
 
 const TAJWEED_RE = /\[([a-z])(?::\d+)?\[([^\]]*)\]/g;
 
-// ===== ألوان التجويد (مطابقة لمصحف المدينة) =====
+// ===== ألوان التجويد (مطابقة لمصحف المدينة المنورة) =====
+// أحمر: مد لازم ٦ حركات
+// برتقالي: مد جائز ٢/٤/٦
+// أصفر: مد واجب ٤/٥ حركات + مد حركتان
+// أخضر: إخفاء + غنة + إقلاب
+// أزرق: قلقلة + تفخيم
+// رمادي فاتح: إدغام + ما لا يُلفظ
 export const tajweedColors: Record<string, { color: string; label: string }> = {
-  m: { color: "#dc2626", label: "مد لازم ٦ حركات" },        // أحمر
-  n: { color: "#ea580c", label: "مد ٢ أو ٤ أو ٦ جوازاً" },   // برتقالي
-  p: { color: "#ca8a04", label: "مد واجب ٤ أو ٥ حركات" },     // أصفر/ذهبي
-  o: { color: "#ca8a04", label: "مد متصل / منفصل" },          // أصفر/ذهبي
-  f: { color: "#16a34a", label: "إخفاء" },                    // أخضر
-  c: { color: "#16a34a", label: "إخفاء شفوي" },               // أخضر
-  w: { color: "#16a34a", label: "إقلاب" },                    // أخضر
-  g: { color: "#16a34a", label: "غُنّة (حركتان)" },           // أخضر
-  q: { color: "#2563eb", label: "قلقلة" },                    // أزرق
+  m: { color: "#E60000", label: "مد لازم ٦ حركات" },          // أحمر
+  n: { color: "#FF7E1E", label: "مد ٢ أو ٤ أو ٦ جوازاً" },     // برتقالي
+  p: { color: "#DDAA1C", label: "مد واجب ٤ أو ٥ حركات" },      // أصفر ذهبي
+  o: { color: "#DDAA1C", label: "مد متصل / منفصل" },           // أصفر ذهبي
+  f: { color: "#1AAE5A", label: "إخفاء" },                     // أخضر
+  c: { color: "#1AAE5A", label: "إخفاء شفوي" },                // أخضر
+  w: { color: "#1AAE5A", label: "إقلاب" },                     // أخضر
+  g: { color: "#1AAE5A", label: "غُنّة (حركتان)" },            // أخضر
+  q: { color: "#1E90FF", label: "قلقلة" },                     // أزرق
   // إدغامات
-  a: { color: "#9ca3af", label: "إدغام بغنة" },               // رمادي
-  u: { color: "#9ca3af", label: "إدغام بلا غنة" },            // رمادي
-  i: { color: "#9ca3af", label: "إدغام شفوي" },               // رمادي
-  d: { color: "#9ca3af", label: "إدغام متجانسين" },           // رمادي
-  b: { color: "#9ca3af", label: "إدغام متقاربين" },           // رمادي
+  a: { color: "#A8A8A8", label: "إدغام بغنة" },                // رمادي فاتح
+  u: { color: "#A8A8A8", label: "إدغام بلا غنة" },             // رمادي فاتح
+  i: { color: "#A8A8A8", label: "إدغام شفوي" },                // رمادي فاتح
+  d: { color: "#A8A8A8", label: "إدغام متجانسين" },            // رمادي فاتح
+  b: { color: "#A8A8A8", label: "إدغام متقاربين" },            // رمادي فاتح
   // ما لا يُلفظ
-  s: { color: "#9ca3af", label: "حرف لا يُلفظ" },             // رمادي
-  l: { color: "#9ca3af", label: "لام شمسية" },                // رمادي
-  h: { color: "#9ca3af", label: "همزة وصل" },                 // رمادي
+  s: { color: "#A8A8A8", label: "حرف لا يُلفظ" },              // رمادي فاتح
+  l: { color: "#A8A8A8", label: "لام شمسية" },                 // رمادي فاتح
+  h: { color: "#A8A8A8", label: "همزة وصل" },                  // رمادي فاتح
 };
 
-// مجموعات لعرض المفتاح بشكل مختصر
+// مجموعات لعرض المفتاح بشكل مختصر (مطابق لمصحف المدينة)
 export const tajweedLegend: { color: string; label: string }[] = [
-  { color: "#dc2626", label: "مد لازم ٦ حركات" },
-  { color: "#ea580c", label: "مد جائز ٢/٤/٦" },
-  { color: "#ca8a04", label: "مد واجب / متصل" },
-  { color: "#16a34a", label: "إخفاء وغنة وإقلاب" },
-  { color: "#2563eb", label: "قلقلة" },
-  { color: "#9ca3af", label: "إدغام / لا يُلفظ" },
+  { color: "#E60000", label: "مد ٦ حركات لزوماً" },
+  { color: "#FF7E1E", label: "مد ٢ أو ٤ أو ٦ جوازاً" },
+  { color: "#DDAA1C", label: "مد واجب ٤ أو ٥ حركات" },
+  { color: "#1AAE5A", label: "إخفاء ومواقع الغُنّة (حركتان)" },
+  { color: "#1E90FF", label: "قلقلة" },
+  { color: "#A8A8A8", label: "إدغام، وما لا يُلفظ" },
 ];
 
 type Token = { char: string; tag?: string };
