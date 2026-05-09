@@ -1,8 +1,9 @@
 import { createFileRoute, Link, notFound } from "@tanstack/react-router";
 import { useEffect, useRef, useState } from "react";
 import useEmblaCarousel from "embla-carousel-react";
-import { ChevronRight, ZoomIn, ZoomOut, Play, Pause, Download, Check, Loader2, Volume2 } from "lucide-react";
+import { ChevronRight, ZoomIn, ZoomOut, Play, Pause, Download, Check, Loader2, Volume2, Palette, Info } from "lucide-react";
 import { surahs, reciters, type ReciterId } from "@/data/surahs";
+import { fetchSurahTajweed, renderTajweed, tajweedLegend, type TajweedAyah } from "@/lib/tajweed";
 import {
   fetchSurahText,
   getAyahAudioUrl,
@@ -54,6 +55,10 @@ function SurahReader() {
   const [cachedKeys, setCachedKeys] = useState<Set<string>>(new Set());
   const [selectedAyahs, setSelectedAyahs] = useState<Set<number>>(new Set());
   const [showReciterSheet, setShowReciterSheet] = useState(false);
+  const [tajweedMode, setTajweedMode] = useState(false);
+  const [tajweedAyahs, setTajweedAyahs] = useState<TajweedAyah[] | null>(null);
+  const [tajweedLoading, setTajweedLoading] = useState(false);
+  const [showLegend, setShowLegend] = useState(false);
 
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const playQueueRef = useRef<number[]>([]);
@@ -75,6 +80,26 @@ function SurahReader() {
   useEffect(() => {
     getCachedAudioKeys().then(setCachedKeys);
   }, [downloading]);
+
+  useEffect(() => {
+    if (!tajweedMode || tajweedAyahs) return;
+    let alive = true;
+    setTajweedLoading(true);
+    fetchSurahTajweed(meta.number)
+      .then((a) => {
+        if (alive) setTajweedAyahs(a);
+      })
+      .catch((e) => console.error("tajweed", e))
+      .finally(() => alive && setTajweedLoading(false));
+    return () => {
+      alive = false;
+    };
+  }, [tajweedMode, tajweedAyahs, meta.number]);
+
+  // Reset tajweed cache when surah changes
+  useEffect(() => {
+    setTajweedAyahs(null);
+  }, [meta.number]);
 
   useEffect(() => {
     if (!emblaApi) return;
@@ -303,6 +328,17 @@ function SurahReader() {
         </div>
         <div className="flex gap-1">
           <button
+            onClick={() => setTajweedMode((v) => !v)}
+            className={cn(
+              "flex h-9 w-9 items-center justify-center rounded-full text-primary-foreground transition-all",
+              tajweedMode ? "bg-white/40 ring-2 ring-white/60" : "bg-white/15"
+            )}
+            aria-label="تبديل التجويد"
+            title="إظهار/إخفاء ألوان التجويد"
+          >
+            <Palette className="h-4 w-4" />
+          </button>
+          <button
             onClick={() => setFontSize((s) => Math.max(18, s - 2))}
             className="flex h-9 w-9 items-center justify-center rounded-full bg-white/15 text-primary-foreground"
           >
@@ -316,6 +352,25 @@ function SurahReader() {
           </button>
         </div>
       </div>
+
+      {/* Tajweed legend bar */}
+      {tajweedMode && (
+        <div className="flex items-center gap-2 overflow-x-auto border-b px-3 py-2 hide-scrollbar" style={{ background: "color-mix(in oklab, var(--gold) 6%, var(--card))" }}>
+          <button
+            onClick={() => setShowLegend(true)}
+            className="flex shrink-0 items-center gap-1 rounded-full border bg-card px-2 py-1 text-[10px] font-bold"
+          >
+            <Info className="h-3 w-3" />
+            مفتاح الألوان
+          </button>
+          {tajweedLegend.map((l) => (
+            <div key={l.label} className="flex shrink-0 items-center gap-1 text-[10px]">
+              <span className="h-2.5 w-2.5 rounded-full" style={{ background: l.color }} />
+              <span className="whitespace-nowrap text-muted-foreground">{l.label}</span>
+            </div>
+          ))}
+        </div>
+      )}
 
       {/* Reciter selector */}
       <div className="flex items-center gap-2 border-b px-3 py-2 text-xs">
@@ -378,10 +433,18 @@ function SurahReader() {
                     </p>
                   )}
                   <div className="font-quran text-justify leading-loose" style={{ fontSize, lineHeight: 2.4 }}>
+                    {tajweedMode && tajweedLoading && (
+                      <span className="mb-2 inline-flex items-center gap-2 rounded-full border bg-card px-2 py-1 text-[10px] text-muted-foreground">
+                        <Loader2 className="h-3 w-3 animate-spin" /> جاري تحميل التجويد...
+                      </span>
+                    )}
                     {pg.map((a) => {
                       const selected = selectedAyahs.has(a.numberInSurah);
                       const isPlaying = playing === a.numberInSurah;
                       const cached = isCached(a.numberInSurah);
+                      const tajweedText = tajweedMode
+                        ? tajweedAyahs?.find((t) => t.numberInSurah === a.numberInSurah)?.text
+                        : undefined;
                       return (
                         <span key={a.numberInSurah}>
                           <span
@@ -392,7 +455,7 @@ function SurahReader() {
                               selected && !isPlaying && "bg-[color-mix(in_oklab,var(--primary)_15%,transparent)]"
                             )}
                           >
-                            {a.text}
+                            {tajweedText ? renderTajweed(tajweedText) : a.text}
                           </span>{" "}
                           <button
                             onClick={(e) => {
@@ -494,6 +557,34 @@ function SurahReader() {
                 </button>
               ))}
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Tajweed legend modal */}
+      {showLegend && (
+        <div
+          className="fixed inset-0 z-[110] flex items-end justify-center bg-black/60"
+          onClick={() => setShowLegend(false)}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="w-full max-w-md rounded-t-3xl border p-5"
+            style={{ background: "var(--card)", paddingBottom: "calc(1.25rem + 5rem + env(safe-area-inset-bottom))" }}
+          >
+            <div className="mx-auto mb-4 h-1.5 w-12 rounded-full bg-muted" />
+            <h3 className="mb-3 text-lg font-extrabold">مفتاح ألوان التجويد</h3>
+            <div className="space-y-2">
+              {tajweedLegend.map((l) => (
+                <div key={l.label} className="flex items-center gap-3 rounded-xl border p-3">
+                  <span className="h-5 w-5 rounded-full" style={{ background: l.color }} />
+                  <span className="font-bold">{l.label}</span>
+                </div>
+              ))}
+            </div>
+            <p className="mt-3 text-[11px] text-muted-foreground">
+              الألوان مطابقة لمصحف المدينة المنورة برواية حفص عن عاصم.
+            </p>
           </div>
         </div>
       )}
