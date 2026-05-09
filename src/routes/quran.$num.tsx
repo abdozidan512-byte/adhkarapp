@@ -101,10 +101,31 @@ function SurahReader() {
     };
   }, [tajweedMode, tajweedAyahs, meta.number]);
 
-  // Reset tajweed cache when surah changes
+  // Reset caches when surah changes
   useEffect(() => {
     setTajweedAyahs(null);
+    setTafsirData(null);
   }, [meta.number]);
+
+  // Load tafsir when sheet opens or edition changes
+  useEffect(() => {
+    if (tafsirAyah === null) return;
+    if (tafsirData) return;
+    let alive = true;
+    setTafsirLoading(true);
+    fetchSurahTafsir(meta.number, tafsirEdition)
+      .then((d) => alive && setTafsirData(d))
+      .catch((e) => console.error("tafsir", e))
+      .finally(() => alive && setTafsirLoading(false));
+    return () => {
+      alive = false;
+    };
+  }, [tafsirAyah, tafsirEdition, tafsirData, meta.number]);
+
+  // Reset tafsir cache when edition changes
+  useEffect(() => {
+    setTafsirData(null);
+  }, [tafsirEdition]);
 
   useEffect(() => {
     if (!emblaApi) return;
