@@ -60,6 +60,10 @@ function SurahReader() {
   const [tajweedAyahs, setTajweedAyahs] = useState<TajweedAyah[] | null>(null);
   const [tajweedLoading, setTajweedLoading] = useState(false);
   const [showLegend, setShowLegend] = useState(false);
+  const [tafsirAyah, setTafsirAyah] = useState<number | null>(null);
+  const [tafsirEdition, setTafsirEdition] = useState<string>("ar.muyassar");
+  const [tafsirData, setTafsirData] = useState<TafsirAyah[] | null>(null);
+  const [tafsirLoading, setTafsirLoading] = useState(false);
 
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const playQueueRef = useRef<number[]>([]);
