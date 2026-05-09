@@ -433,10 +433,18 @@ function SurahReader() {
                     </p>
                   )}
                   <div className="font-quran text-justify leading-loose" style={{ fontSize, lineHeight: 2.4 }}>
+                    {tajweedMode && tajweedLoading && (
+                      <span className="mb-2 inline-flex items-center gap-2 rounded-full border bg-card px-2 py-1 text-[10px] text-muted-foreground">
+                        <Loader2 className="h-3 w-3 animate-spin" /> جاري تحميل التجويد...
+                      </span>
+                    )}
                     {pg.map((a) => {
                       const selected = selectedAyahs.has(a.numberInSurah);
                       const isPlaying = playing === a.numberInSurah;
                       const cached = isCached(a.numberInSurah);
+                      const tajweedText = tajweedMode
+                        ? tajweedAyahs?.find((t) => t.numberInSurah === a.numberInSurah)?.text
+                        : undefined;
                       return (
                         <span key={a.numberInSurah}>
                           <span
@@ -447,7 +455,7 @@ function SurahReader() {
                               selected && !isPlaying && "bg-[color-mix(in_oklab,var(--primary)_15%,transparent)]"
                             )}
                           >
-                            {a.text}
+                            {tajweedText ? renderTajweed(tajweedText) : a.text}
                           </span>{" "}
                           <button
                             onClick={(e) => {
