@@ -519,6 +519,17 @@ function SurahReader() {
                               )}
                             </button>
                           )}{" "}
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setTafsirAyah(a.numberInSurah);
+                            }}
+                            className="inline-flex h-5 w-5 items-center justify-center rounded-full text-muted-foreground hover:text-primary"
+                            aria-label="تفسير الآية"
+                            title="تفسير الآية"
+                          >
+                            <BookOpen className="h-3 w-3" />
+                          </button>{" "}
                         </span>
                       );
                     })}
