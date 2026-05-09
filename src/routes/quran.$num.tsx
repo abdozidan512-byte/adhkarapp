@@ -1,9 +1,10 @@
 import { createFileRoute, Link, notFound } from "@tanstack/react-router";
 import { useEffect, useRef, useState } from "react";
 import useEmblaCarousel from "embla-carousel-react";
-import { ChevronRight, ZoomIn, ZoomOut, Play, Pause, Download, Check, Loader2, Volume2, Palette, Info } from "lucide-react";
+import { ChevronRight, ZoomIn, ZoomOut, Play, Pause, Download, Check, Loader2, Volume2, Palette, Info, BookOpen, X } from "lucide-react";
 import { surahs, reciters, type ReciterId } from "@/data/surahs";
 import { fetchSurahTajweed, renderTajweed, tajweedLegend, type TajweedAyah } from "@/lib/tajweed";
+import { fetchSurahTafsir, tafsirEditions, type TafsirAyah } from "@/lib/tafsir";
 import {
   fetchSurahText,
   getAyahAudioUrl,
@@ -59,6 +60,10 @@ function SurahReader() {
   const [tajweedAyahs, setTajweedAyahs] = useState<TajweedAyah[] | null>(null);
   const [tajweedLoading, setTajweedLoading] = useState(false);
   const [showLegend, setShowLegend] = useState(false);
+  const [tafsirAyah, setTafsirAyah] = useState<number | null>(null);
+  const [tafsirEdition, setTafsirEdition] = useState<string>("ar.muyassar");
+  const [tafsirData, setTafsirData] = useState<TafsirAyah[] | null>(null);
+  const [tafsirLoading, setTafsirLoading] = useState(false);
 
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const playQueueRef = useRef<number[]>([]);
@@ -96,10 +101,31 @@ function SurahReader() {
     };
   }, [tajweedMode, tajweedAyahs, meta.number]);
 
-  // Reset tajweed cache when surah changes
+  // Reset caches when surah changes
   useEffect(() => {
     setTajweedAyahs(null);
+    setTafsirData(null);
   }, [meta.number]);
+
+  // Load tafsir when sheet opens or edition changes
+  useEffect(() => {
+    if (tafsirAyah === null) return;
+    if (tafsirData) return;
+    let alive = true;
+    setTafsirLoading(true);
+    fetchSurahTafsir(meta.number, tafsirEdition)
+      .then((d) => alive && setTafsirData(d))
+      .catch((e) => console.error("tafsir", e))
+      .finally(() => alive && setTafsirLoading(false));
+    return () => {
+      alive = false;
+    };
+  }, [tafsirAyah, tafsirEdition, tafsirData, meta.number]);
+
+  // Reset tafsir cache when edition changes
+  useEffect(() => {
+    setTafsirData(null);
+  }, [tafsirEdition]);
 
   useEffect(() => {
     if (!emblaApi) return;
@@ -493,6 +519,17 @@ function SurahReader() {
                               )}
                             </button>
                           )}{" "}
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setTafsirAyah(a.numberInSurah);
+                            }}
+                            className="inline-flex h-5 w-5 items-center justify-center rounded-full text-muted-foreground hover:text-primary"
+                            aria-label="تفسير الآية"
+                            title="تفسير الآية"
+                          >
+                            <BookOpen className="h-3 w-3" />
+                          </button>{" "}
                         </span>
                       );
                     })}
@@ -585,6 +622,92 @@ function SurahReader() {
             <p className="mt-3 text-[11px] text-muted-foreground">
               الألوان مطابقة لمصحف المدينة المنورة برواية حفص عن عاصم.
             </p>
+          </div>
+        </div>
+      )}
+
+      {/* Tafsir sheet */}
+      {tafsirAyah !== null && (
+        <div
+          className="fixed inset-0 z-[120] flex items-end justify-center bg-black/60"
+          onClick={() => setTafsirAyah(null)}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="flex max-h-[88vh] w-full max-w-md flex-col overflow-hidden rounded-t-3xl border"
+            style={{ background: "var(--card)" }}
+          >
+            <div className="flex items-center justify-between border-b p-4" style={{ background: "var(--gradient-hero)" }}>
+              <div className="flex items-center gap-2 text-primary-foreground">
+                <BookOpen className="h-5 w-5" />
+                <div>
+                  <p className="text-base font-extrabold">تفسير الآية {tafsirAyah}</p>
+                  <p className="text-[10px] opacity-80">سورة {meta.name}</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setTafsirAyah(null)}
+                className="flex h-8 w-8 items-center justify-center rounded-full bg-white/15 text-primary-foreground"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            {/* Edition tabs */}
+            <div className="flex gap-2 overflow-x-auto border-b px-3 py-2 hide-scrollbar">
+              {tafsirEditions.map((ed) => (
+                <button
+                  key={ed.id}
+                  onClick={() => setTafsirEdition(ed.id)}
+                  className={cn(
+                    "shrink-0 rounded-full border px-3 py-1.5 text-xs font-bold transition-all",
+                    tafsirEdition === ed.id ? "text-primary-foreground" : "bg-card"
+                  )}
+                  style={
+                    tafsirEdition === ed.id
+                      ? { background: "var(--gradient-primary)", borderColor: "transparent" }
+                      : undefined
+                  }
+                >
+                  {ed.shortName}
+                </button>
+              ))}
+            </div>
+
+            <div
+              className="flex-1 overflow-y-auto p-5"
+              style={{ paddingBottom: "calc(1.5rem + env(safe-area-inset-bottom))" }}
+            >
+              {/* الآية */}
+              {ayahs && (
+                <div
+                  className="mb-4 rounded-2xl border p-4 text-center font-quran leading-loose"
+                  style={{ background: "color-mix(in oklab, var(--gold) 8%, transparent)", fontSize: 22, lineHeight: 2.2 }}
+                >
+                  {ayahs.find((a) => a.numberInSurah === tafsirAyah)?.text}
+                  <span className="mx-2 inline-flex h-7 w-7 items-center justify-center rounded-full text-[11px] font-bold" style={{ background: "var(--gradient-gold)", color: "var(--gold-foreground)" }}>
+                    {tafsirAyah}
+                  </span>
+                </div>
+              )}
+
+              {/* التفسير */}
+              {tafsirLoading ? (
+                <div className="flex items-center justify-center py-8 text-muted-foreground">
+                  <Loader2 className="h-5 w-5 animate-spin" />
+                  <span className="mr-2">جاري تحميل التفسير...</span>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  <p className="text-xs font-bold text-muted-foreground">
+                    {tafsirEditions.find((e) => e.id === tafsirEdition)?.name}
+                  </p>
+                  <p className="text-base leading-loose" style={{ lineHeight: 2 }}>
+                    {tafsirData?.find((t) => t.numberInSurah === tafsirAyah)?.text || "التفسير غير متاح حالياً."}
+                  </p>
+                </div>
+              )}
+            </div>
           </div>
         </div>
       )}
