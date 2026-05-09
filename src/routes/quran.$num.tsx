@@ -1,9 +1,10 @@
 import { createFileRoute, Link, notFound } from "@tanstack/react-router";
 import { useEffect, useRef, useState } from "react";
 import useEmblaCarousel from "embla-carousel-react";
-import { ChevronRight, ZoomIn, ZoomOut, Play, Pause, Download, Check, Loader2, Volume2, Palette, Info } from "lucide-react";
+import { ChevronRight, ZoomIn, ZoomOut, Play, Pause, Download, Check, Loader2, Volume2, Palette, Info, BookOpen, X } from "lucide-react";
 import { surahs, reciters, type ReciterId } from "@/data/surahs";
 import { fetchSurahTajweed, renderTajweed, tajweedLegend, type TajweedAyah } from "@/lib/tajweed";
+import { fetchSurahTafsir, tafsirEditions, type TafsirAyah } from "@/lib/tafsir";
 import {
   fetchSurahText,
   getAyahAudioUrl,
