@@ -328,6 +328,17 @@ function SurahReader() {
         </div>
         <div className="flex gap-1">
           <button
+            onClick={() => setTajweedMode((v) => !v)}
+            className={cn(
+              "flex h-9 w-9 items-center justify-center rounded-full text-primary-foreground transition-all",
+              tajweedMode ? "bg-white/40 ring-2 ring-white/60" : "bg-white/15"
+            )}
+            aria-label="تبديل التجويد"
+            title="إظهار/إخفاء ألوان التجويد"
+          >
+            <Palette className="h-4 w-4" />
+          </button>
+          <button
             onClick={() => setFontSize((s) => Math.max(18, s - 2))}
             className="flex h-9 w-9 items-center justify-center rounded-full bg-white/15 text-primary-foreground"
           >
@@ -341,6 +352,25 @@ function SurahReader() {
           </button>
         </div>
       </div>
+
+      {/* Tajweed legend bar */}
+      {tajweedMode && (
+        <div className="flex items-center gap-2 overflow-x-auto border-b px-3 py-2 hide-scrollbar" style={{ background: "color-mix(in oklab, var(--gold) 6%, var(--card))" }}>
+          <button
+            onClick={() => setShowLegend(true)}
+            className="flex shrink-0 items-center gap-1 rounded-full border bg-card px-2 py-1 text-[10px] font-bold"
+          >
+            <Info className="h-3 w-3" />
+            مفتاح الألوان
+          </button>
+          {tajweedLegend.map((l) => (
+            <div key={l.label} className="flex shrink-0 items-center gap-1 text-[10px]">
+              <span className="h-2.5 w-2.5 rounded-full" style={{ background: l.color }} />
+              <span className="whitespace-nowrap text-muted-foreground">{l.label}</span>
+            </div>
+          ))}
+        </div>
+      )}
 
       {/* Reciter selector */}
       <div className="flex items-center gap-2 border-b px-3 py-2 text-xs">
