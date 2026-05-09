@@ -82,6 +82,26 @@ function SurahReader() {
   }, [downloading]);
 
   useEffect(() => {
+    if (!tajweedMode || tajweedAyahs) return;
+    let alive = true;
+    setTajweedLoading(true);
+    fetchSurahTajweed(meta.number)
+      .then((a) => {
+        if (alive) setTajweedAyahs(a);
+      })
+      .catch((e) => console.error("tajweed", e))
+      .finally(() => alive && setTajweedLoading(false));
+    return () => {
+      alive = false;
+    };
+  }, [tajweedMode, tajweedAyahs, meta.number]);
+
+  // Reset tajweed cache when surah changes
+  useEffect(() => {
+    setTajweedAyahs(null);
+  }, [meta.number]);
+
+  useEffect(() => {
     if (!emblaApi) return;
     const onSelect = () => setPage(emblaApi.selectedScrollSnap());
     emblaApi.on("select", onSelect);
