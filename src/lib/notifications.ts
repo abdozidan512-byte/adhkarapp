@@ -362,12 +362,15 @@ function toNativeNotification(job: NotificationJob): LocalNotificationSchema {
     id: createNotificationId(job),
     title: job.title,
     body: job.body,
-    largeBody: job.body,
+    largeBody: job.lines?.join("\n") ?? job.body,
     summaryText: "نور",
+    inboxList: job.lines,
     channelId: NATIVE_CHANNEL_ID,
     smallIcon: "ic_stat_icon",
+    largeIcon: "ic_launcher",
     iconColor: "#1a3d2e",
     autoCancel: true,
+    group: NOTIFICATION_GROUP,
     schedule: { at: job.date, allowWhileIdle: true },
   };
 }
@@ -394,13 +397,15 @@ async function scheduleNativeBatch(jobs: NotificationJob[], LocalNotifications: 
 
 type ScheduleResult = "native" | "trigger" | "timeout" | "skipped";
 
-export async function scheduleAllNotifications(reminderMin = 15) {
-  if (typeof window === "undefined") return;
+export async function scheduleAllNotifications(reminderMin = 15): Promise<NotificationStatus | undefined> {
+  if (typeof window === "undefined") return undefined;
 
   const native = await ensureNativeReady(false);
   const isNative = Boolean(native);
 
-  if (!isNative && (typeof Notification === "undefined" || Notification.permission !== "granted")) return;
+  if (!isNative && (typeof Notification === "undefined" || Notification.permission !== "granted")) {
+    return getNotificationStatus();
+  }
   clearScheduled();
 
   if (native) {
@@ -425,6 +430,7 @@ export async function scheduleAllNotifications(reminderMin = 15) {
     const today = new Date();
     const supportsBackgroundScheduling = isNative || supportsTimestampTrigger();
     const daysToSchedule = supportsBackgroundScheduling ? BACKGROUND_SCHEDULE_DAYS : 1;
+    const mode: NotificationDeliveryMode = isNative ? "native" : supportsTimestampTrigger() ? "web-background" : "web-open";
     const jobs: NotificationJob[] = [];
     const order: PrayerName[] = ["Fajr", "Dhuhr", "Asr", "Maghrib", "Isha"];
 
@@ -434,30 +440,48 @@ export async function scheduleAllNotifications(reminderMin = 15) {
 
       order.forEach((name) => {
         const prayerDate = buildPrayerDate(timings[name], scheduleDate);
+        const prayerTime = formatNotificationTime(prayerDate);
 
         if (types.prayerReminder) {
           const remTime = new Date(prayerDate.getTime() - reminderMin * 60 * 1000);
-          pushJob(jobs, remTime, `🕌 تذكير: ${prayerArabic[name]}`, `بقي ${reminderMin} دقيقة على ${prayerArabic[name]}`);
+          pushJob(jobs, remTime, `تذكير: ${prayerArabic[name]}`, `بقي ${reminderMin} دقيقة على ${prayerArabic[name]} — ${prayerTime}`, [
+            `🕌 صلاة ${prayerArabic[name]}`,
+            `⏱️ بقي ${reminderMin} دقيقة`,
+            `🕰️ الموعد: ${prayerTime}`,
+          ]);
         }
 
         if (types.prayerTime) {
-          pushJob(jobs, prayerDate, `🕌 حان وقت ${prayerArabic[name]}`, "حيّ على الصلاة، حيّ على الفلاح");
+          pushJob(jobs, prayerDate, `حان وقت ${prayerArabic[name]}`, `دخل وقت صلاة ${prayerArabic[name]} — ${prayerTime}`, [
+            `🕌 دخل وقت صلاة ${prayerArabic[name]}`,
+            `🕰️ ${prayerTime}`,
+            "حيّ على الصلاة، حيّ على الفلاح",
+          ]);
         }
 
         if (types.afterPrayer) {
           const after = new Date(prayerDate.getTime() + 5 * 60 * 1000);
-          pushJob(jobs, after, "✨ أذكار بعد الصلاة", "لا تنسَ أذكار ما بعد الصلاة");
+          pushJob(jobs, after, "أذكار بعد الصلاة", `لا تنسَ أذكار ما بعد صلاة ${prayerArabic[name]}`, [
+            `✨ بعد صلاة ${prayerArabic[name]}`,
+            "لا تنسَ أذكار ما بعد الصلاة",
+          ]);
         }
       });
 
       if (types.morning) {
         const morning = new Date(buildPrayerDate(timings.Fajr, scheduleDate).getTime() + 30 * 60 * 1000);
-        pushJob(jobs, morning, "🌅 أذكار الصباح", "ابدأ يومك بذكر الله");
+        pushJob(jobs, morning, "أذكار الصباح", `ابدأ يومك بذكر الله — ${formatNotificationTime(morning)}`, [
+          "🌅 أذكار الصباح",
+          "ابدأ يومك بذكر الله",
+        ]);
       }
 
       if (types.evening) {
         const evening = buildPrayerDate(timings.Asr, scheduleDate);
-        pushJob(jobs, evening, "🌙 أذكار المساء", "اختم نهارك بذكر الله");
+        pushJob(jobs, evening, "أذكار المساء", `اختم نهارك بذكر الله — ${formatNotificationTime(evening)}`, [
+          "🌙 أذكار المساء",
+          "اختم نهارك بذكر الله",
+        ]);
       }
     }
 
@@ -473,15 +497,18 @@ export async function scheduleAllNotifications(reminderMin = 15) {
 
     localStorage.setItem(SCHEDULED_KEY, getScheduleKey(addDays(today, daysToSchedule - 1)));
     localStorage.setItem(SCHEDULED_COUNT_KEY, String(futureJobs.length));
+    localStorage.setItem(SCHEDULED_MODE_KEY, mode);
     if (results.some((result) => result !== "skipped")) {
       console.info("Notifications scheduled", results.length, results[0]);
     }
+    return getNotificationStatus();
   } catch (e) {
     console.error("Failed to schedule notifications", e);
+    return getNotificationStatus();
   }
 }
 
-async function scheduleAt(date: Date, title: string, body: string): Promise<ScheduleResult> {
+async function scheduleAt(date: Date, title: string, body: string, lines?: string[]): Promise<ScheduleResult> {
   const ms = date.getTime() - Date.now();
   if (ms <= 0) return "skipped";
 
@@ -489,7 +516,7 @@ async function scheduleAt(date: Date, title: string, body: string): Promise<Sche
   if (triggered) return "trigger";
 
   if (ms > 24 * 60 * 60 * 1000) return "skipped";
-  const id = window.setTimeout(() => showNotificationNow(title, body), ms);
+  const id = window.setTimeout(() => showNotificationNow(title, body, lines), ms);
   timers.push(id);
   return "timeout";
 }
