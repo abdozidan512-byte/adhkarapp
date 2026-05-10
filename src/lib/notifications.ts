@@ -278,6 +278,7 @@ export async function clearAllScheduledNotifications() {
   if (typeof localStorage !== "undefined") {
     localStorage.removeItem(SCHEDULED_KEY);
     localStorage.removeItem(SCHEDULED_COUNT_KEY);
+    localStorage.removeItem(SCHEDULED_MODE_KEY);
   }
 
   const native = await getNativeNotifications();
@@ -296,7 +297,7 @@ export async function clearAllScheduledNotifications() {
   }
 }
 
-async function showNotificationNow(title: string, body: string) {
+async function showNotificationNow(title: string, body: string, lines?: string[]) {
   const native = await ensureNativeReady(false);
   if (native) {
     await native.schedule({
@@ -305,10 +306,15 @@ async function showNotificationNow(title: string, body: string) {
           id: createNotificationId({ date: new Date(), title, body }),
           title,
           body,
+          largeBody: lines?.join("\n") ?? body,
+          summaryText: "نور",
+          inboxList: lines,
           channelId: NATIVE_CHANNEL_ID,
           smallIcon: "ic_stat_icon",
+          largeIcon: "ic_launcher",
           iconColor: "#1a3d2e",
           autoCancel: true,
+          group: NOTIFICATION_GROUP,
           schedule: { at: new Date(Date.now() + 100), allowWhileIdle: true },
         },
       ],
@@ -324,11 +330,13 @@ async function showNotificationNow(title: string, body: string) {
       if (reg) {
         await reg.showNotification(title, {
           body,
-          icon: "/icon-192.png",
-          badge: "/icon-192.png",
+          icon: WEB_NOTIFICATION_ICON,
+          image: WEB_NOTIFICATION_ICON,
           tag: title,
+          renotify: true,
           vibrate: [200, 100, 200],
           requireInteraction: true,
+          data: { url: "/" },
         } as any);
         return;
       }
@@ -336,7 +344,7 @@ async function showNotificationNow(title: string, body: string) {
   }
 
   try {
-    new Notification(title, { body, icon: "/icon-192.png", badge: "/icon-192.png", tag: title, requireInteraction: true });
+    new Notification(title, { body, icon: WEB_NOTIFICATION_ICON, tag: title, requireInteraction: true });
   } catch {}
 }
 
