@@ -525,11 +525,13 @@ function SurahReader() {
                               e.stopPropagation();
                               setTafsirAyah(a.numberInSurah);
                             }}
-                            className="inline-flex h-5 w-5 items-center justify-center rounded-full text-muted-foreground hover:text-primary"
-                            aria-label="تفسير الآية"
-                            title="تفسير الآية"
+                            className="inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-extrabold text-primary hover:bg-primary hover:text-primary-foreground transition-colors"
+                            style={{ borderColor: "var(--gold)" }}
+                            aria-label="عرض تفسير الآية"
+                            title="عرض تفسير الآية"
                           >
                             <BookOpen className="h-3 w-3" />
+                            <span>تفسير</span>
                           </button>{" "}
                         </span>
                       );
