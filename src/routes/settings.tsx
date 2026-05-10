@@ -240,6 +240,43 @@ function SettingsPage() {
   );
 }
 
+function NotificationStatusCard({
+  mode,
+  scheduledCount,
+  scheduledUntil,
+}: {
+  mode: string;
+  scheduledCount: number;
+  scheduledUntil: string | null;
+}) {
+  const isReliable = mode === "native" || mode === "web-background";
+  const title = mode === "native" ? "تعمل على الهاتف" : mode === "web-background" ? "تعمل في الخلفية" : "تعمل والمتصفح مفتوح";
+  const subtitle = isReliable
+    ? `تم تجهيز ${scheduledCount} إشعار${scheduledUntil ? ` حتى ${scheduledUntil}` : ""}`
+    : "المتصفح وحده قد لا يرسل الإشعار إذا أُغلق التطبيق تماماً";
+
+  return (
+    <div
+      className="flex items-center gap-3 rounded-2xl border p-3"
+      style={{
+        background: isReliable ? "color-mix(in oklab, var(--primary) 10%, transparent)" : "color-mix(in oklab, var(--gold) 12%, transparent)",
+        borderColor: isReliable ? "var(--primary)" : "var(--gold)",
+      }}
+    >
+      <div
+        className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl text-lg"
+        style={{ background: isReliable ? "var(--gradient-primary)" : "var(--gradient-gold)", color: isReliable ? "var(--primary-foreground)" : "var(--gold-foreground)" }}
+      >
+        {isReliable ? "✓" : "!"}
+      </div>
+      <div className="min-w-0 flex-1">
+        <p className="text-sm font-extrabold">{title}</p>
+        <p className="text-[11px] leading-relaxed text-muted-foreground">{subtitle}</p>
+      </div>
+    </div>
+  );
+}
+
 function SettingRow({
   icon: Icon,
   title,
