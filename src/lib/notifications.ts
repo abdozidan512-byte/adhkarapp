@@ -6,11 +6,14 @@ import { fetchPrayerTimes, getUserCoords, prayerArabic, type PrayerName } from "
 const STORAGE_KEY = "notifications-enabled";
 const SCHEDULED_KEY = "notif-scheduled-until";
 const SCHEDULED_COUNT_KEY = "notif-scheduled-count";
+const SCHEDULED_MODE_KEY = "notif-scheduled-mode";
 const TYPES_KEY = "notif-types";
 const BACKGROUND_SCHEDULE_DAYS = 30;
 const MIN_PENDING_NATIVE_NOTIFICATIONS = 20;
 const NATIVE_CHANNEL_ID = "noor-daily-reminders";
 const NATIVE_CHUNK_SIZE = 64;
+const WEB_NOTIFICATION_ICON = "/icon-512.png";
+const NOTIFICATION_GROUP = "noor-reminders";
 
 type NativeNotifications = typeof import("@capacitor/local-notifications").LocalNotifications;
 
@@ -18,6 +21,16 @@ type NotificationJob = {
   date: Date;
   title: string;
   body: string;
+  lines?: string[];
+};
+
+export type NotificationDeliveryMode = "native" | "web-background" | "web-open" | "unsupported";
+
+export type NotificationStatus = {
+  mode: NotificationDeliveryMode;
+  scheduledCount: number;
+  scheduledUntil: string | null;
+  canWakePhone: boolean;
 };
 
 export type NotifType =
@@ -119,6 +132,10 @@ function getScheduleKey(date: Date) {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
 }
 
+function formatNotificationTime(date: Date) {
+  return new Intl.DateTimeFormat("ar-SA", { hour: "numeric", minute: "2-digit" }).format(date);
+}
+
 function addDays(base: Date, days: number) {
   const next = new Date(base);
   next.setDate(next.getDate() + days);
@@ -133,9 +150,9 @@ function buildPrayerDate(time: string, baseDate: Date) {
   return next;
 }
 
-function pushJob(jobs: NotificationJob[], date: Date, title: string, body: string) {
+function pushJob(jobs: NotificationJob[], date: Date, title: string, body: string, lines?: string[]) {
   if (Number.isFinite(date.getTime())) {
-    jobs.push({ date, title, body });
+    jobs.push({ date, title, body, lines });
   }
 }
 
