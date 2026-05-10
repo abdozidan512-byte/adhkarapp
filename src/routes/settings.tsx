@@ -13,7 +13,7 @@ export const Route = createFileRoute("/settings")({
 
 function SettingsPage() {
   const { theme, toggleTheme } = useTheme();
-  const { permission, requestPermission, scheduleAll, enabled, setEnabled, types, setType, testNotification } = useNotifications();
+  const { permission, requestPermission, scheduleAll, enabled, setEnabled, types, setType, status, testNotification } = useNotifications();
   const [storage, setStorage] = useState<{ count: number; bytes: number }>({ count: 0, bytes: 0 });
   const [reminderMin, setReminderMin] = useState(15);
 
@@ -116,6 +116,12 @@ function SettingsPage() {
             className="space-y-4 rounded-2xl border p-4 text-sm"
             style={{ background: "var(--gradient-card)" }}
           >
+            <NotificationStatusCard
+              mode={status.mode}
+              scheduledCount={status.scheduledCount}
+              scheduledUntil={status.scheduledUntil}
+            />
+
             <div>
               <p className="mb-2 font-bold">⏱️ مدة التذكير قبل الصلاة</p>
               <div className="flex gap-2">
@@ -161,9 +167,11 @@ function SettingsPage() {
               🔔 إرسال إشعار اختبار الآن
             </button>
 
-            <p className="text-[11px] text-muted-foreground">
-              💡 لضمان وصول الإشعارات حتى مع غلق التطبيق: ثبّت التطبيق على الشاشة الرئيسية، وفعّل الإشعارات من إعدادات الجوال.
-            </p>
+            {status.mode === "web-open" && (
+              <p className="rounded-xl border p-3 text-[11px] font-semibold text-muted-foreground">
+                على المتصفح قد لا يوقظ الهاتف بعد إغلاق التطبيق تماماً. للوصول في الوقت المحدد دائماً استخدم نسخة Android APK وثبّت إذن الإشعارات والمنبّه الدقيق من إعدادات الهاتف.
+              </p>
+            )}
           </div>
         )}
 
