@@ -172,10 +172,37 @@ function saveTypes(t: NotifTypes) {
   localStorage.setItem(TYPES_KEY, JSON.stringify(t));
 }
 
+export async function getNotificationStatus(): Promise<NotificationStatus> {
+  const scheduledUntil = typeof localStorage !== "undefined" ? localStorage.getItem(SCHEDULED_KEY) : null;
+  const scheduledCount = typeof localStorage !== "undefined" ? Number(localStorage.getItem(SCHEDULED_COUNT_KEY) ?? 0) : 0;
+  const savedMode = typeof localStorage !== "undefined" ? (localStorage.getItem(SCHEDULED_MODE_KEY) as NotificationDeliveryMode | null) : null;
+  const native = await getNativeNotifications();
+
+  if (native) {
+    const permission = await native.checkPermissions().catch(() => null);
+    if (permission?.display === "granted") {
+      return { mode: "native", scheduledCount, scheduledUntil, canWakePhone: true };
+    }
+  }
+
+  if (typeof Notification === "undefined" || Notification.permission !== "granted") {
+    return { mode: "unsupported", scheduledCount, scheduledUntil, canWakePhone: false };
+  }
+
+  const mode: NotificationDeliveryMode = supportsTimestampTrigger() ? "web-background" : "web-open";
+  return { mode: savedMode ?? mode, scheduledCount, scheduledUntil, canWakePhone: mode === "web-background" };
+}
+
 export function useNotifications() {
   const [permission, setPermission] = useState<NotificationPermission>("default");
   const [enabled, setEnabledState] = useState(false);
   const [types, setTypesState] = useState<NotifTypes>(defaultNotifTypes);
+  const [status, setStatus] = useState<NotificationStatus>({
+    mode: "unsupported",
+    scheduledCount: 0,
+    scheduledUntil: null,
+    canWakePhone: false,
+  });
 
   useEffect(() => {
     if (typeof Notification !== "undefined") {
@@ -183,12 +210,20 @@ export function useNotifications() {
     }
     setEnabledState(localStorage.getItem(STORAGE_KEY) === "1");
     setTypesState(loadTypes());
+    getNotificationStatus().then(setStatus).catch(() => undefined);
   }, []);
+
+  async function refreshStatus() {
+    const next = await getNotificationStatus();
+    setStatus(next);
+    return next;
+  }
 
   async function requestPermission() {
     const native = await ensureNativeReady(true);
     if (native) {
       setPermission("granted");
+      await refreshStatus();
       return true;
     }
 
@@ -196,6 +231,7 @@ export function useNotifications() {
     const p = await Notification.requestPermission();
     setPermission(p);
     if (p === "granted") await getServiceWorkerRegistration();
+    await refreshStatus();
     return p === "granted";
   }
 
@@ -203,12 +239,19 @@ export function useNotifications() {
     localStorage.setItem(STORAGE_KEY, v ? "1" : "0");
     setEnabledState(v);
     if (!v) void clearAllScheduledNotifications();
+    void refreshStatus();
   }
 
   function setType(type: NotifType, value: boolean) {
     const next = { ...types, [type]: value };
     setTypesState(next);
     saveTypes(next);
+  }
+
+  async function scheduleAll(reminderMin?: number) {
+    const next = await scheduleAllNotifications(reminderMin);
+    await refreshStatus();
+    return next;
   }
 
   return {
@@ -218,7 +261,9 @@ export function useNotifications() {
     setEnabled,
     types,
     setType,
-    scheduleAll: scheduleAllNotifications,
+    status,
+    refreshStatus,
+    scheduleAll,
     testNotification,
   };
 }
