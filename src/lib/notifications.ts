@@ -492,7 +492,7 @@ export async function scheduleAllNotifications(reminderMin = 15): Promise<Notifi
       await scheduleNativeBatch(futureJobs, native);
       results = futureJobs.map(() => "native");
     } else {
-      results = await Promise.all(futureJobs.map((job) => scheduleAt(job.date, job.title, job.body)));
+      results = await Promise.all(futureJobs.map((job) => scheduleAt(job.date, job.title, job.body, job.lines)));
     }
 
     localStorage.setItem(SCHEDULED_KEY, getScheduleKey(addDays(today, daysToSchedule - 1)));
@@ -529,12 +529,14 @@ async function scheduleViaTrigger(date: Date, title: string, body: string): Prom
     if (!reg) return false;
     await reg.showNotification(title, {
       body,
-      icon: "/icon-192.png",
-      badge: "/icon-192.png",
+      icon: WEB_NOTIFICATION_ICON,
+      image: WEB_NOTIFICATION_ICON,
       tag: `${title}-${date.getTime()}`,
       showTrigger: new (window as any).TimestampTrigger(date.getTime()),
+      renotify: true,
       vibrate: [200, 100, 200],
       requireInteraction: true,
+      data: { url: "/" },
     } as any);
     return true;
   } catch (e) {
@@ -544,7 +546,12 @@ async function scheduleViaTrigger(date: Date, title: string, body: string): Prom
 }
 
 export async function testNotification() {
-  await showNotificationNow("🔔 اختبار الإشعار", "إشعارات نور تعمل بنجاح، بارك الله فيك");
+  const now = new Date();
+  await showNotificationNow("اختبار إشعارات نور", `تعمل بنجاح — ${formatNotificationTime(now)}`, [
+    "🔔 إشعارات نور تعمل بنجاح",
+    `🕰️ وقت الاختبار: ${formatNotificationTime(now)}`,
+    "بارك الله فيك",
+  ]);
 }
 
 export async function ensureDailySchedule(reminderMin = 15) {
