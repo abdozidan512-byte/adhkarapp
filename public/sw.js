@@ -1,6 +1,6 @@
 // Service Worker لتطبيق نور — يفعّل العمل دون إنترنت ويرفع تقييم PWA
 // IMPORTANT: ارفع رقم الإصدار عند كل تغيير لإبطال الكاش القديم
-const CACHE_VERSION = "noor-v4";
+const CACHE_VERSION = "noor-v5";
 const STATIC_CACHE = `${CACHE_VERSION}-static`;
 const RUNTIME_CACHE = `${CACHE_VERSION}-runtime`;
 
@@ -86,14 +86,16 @@ self.addEventListener("notificationclick", (event) => {
   event.notification.close();
   event.waitUntil(
     (async () => {
+      const targetUrl = event.notification.data?.url || "/";
       const all = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
       for (const c of all) {
         if ("focus" in c) {
+          if ("navigate" in c) await c.navigate(targetUrl).catch(() => undefined);
           await c.focus();
           return;
         }
       }
-      if (self.clients.openWindow) await self.clients.openWindow("/");
+      if (self.clients.openWindow) await self.clients.openWindow(targetUrl);
     })()
   );
 });

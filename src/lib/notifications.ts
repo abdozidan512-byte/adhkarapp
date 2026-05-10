@@ -6,11 +6,14 @@ import { fetchPrayerTimes, getUserCoords, prayerArabic, type PrayerName } from "
 const STORAGE_KEY = "notifications-enabled";
 const SCHEDULED_KEY = "notif-scheduled-until";
 const SCHEDULED_COUNT_KEY = "notif-scheduled-count";
+const SCHEDULED_MODE_KEY = "notif-scheduled-mode";
 const TYPES_KEY = "notif-types";
 const BACKGROUND_SCHEDULE_DAYS = 30;
 const MIN_PENDING_NATIVE_NOTIFICATIONS = 20;
 const NATIVE_CHANNEL_ID = "noor-daily-reminders";
 const NATIVE_CHUNK_SIZE = 64;
+const WEB_NOTIFICATION_ICON = "/icon-512.png";
+const NOTIFICATION_GROUP = "noor-reminders";
 
 type NativeNotifications = typeof import("@capacitor/local-notifications").LocalNotifications;
 
@@ -18,6 +21,16 @@ type NotificationJob = {
   date: Date;
   title: string;
   body: string;
+  lines?: string[];
+};
+
+export type NotificationDeliveryMode = "native" | "web-background" | "web-open" | "unsupported";
+
+export type NotificationStatus = {
+  mode: NotificationDeliveryMode;
+  scheduledCount: number;
+  scheduledUntil: string | null;
+  canWakePhone: boolean;
 };
 
 export type NotifType =
@@ -119,6 +132,10 @@ function getScheduleKey(date: Date) {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
 }
 
+function formatNotificationTime(date: Date) {
+  return new Intl.DateTimeFormat("ar-SA", { hour: "numeric", minute: "2-digit" }).format(date);
+}
+
 function addDays(base: Date, days: number) {
   const next = new Date(base);
   next.setDate(next.getDate() + days);
@@ -133,9 +150,9 @@ function buildPrayerDate(time: string, baseDate: Date) {
   return next;
 }
 
-function pushJob(jobs: NotificationJob[], date: Date, title: string, body: string) {
+function pushJob(jobs: NotificationJob[], date: Date, title: string, body: string, lines?: string[]) {
   if (Number.isFinite(date.getTime())) {
-    jobs.push({ date, title, body });
+    jobs.push({ date, title, body, lines });
   }
 }
 
@@ -155,10 +172,37 @@ function saveTypes(t: NotifTypes) {
   localStorage.setItem(TYPES_KEY, JSON.stringify(t));
 }
 
+export async function getNotificationStatus(): Promise<NotificationStatus> {
+  const scheduledUntil = typeof localStorage !== "undefined" ? localStorage.getItem(SCHEDULED_KEY) : null;
+  const scheduledCount = typeof localStorage !== "undefined" ? Number(localStorage.getItem(SCHEDULED_COUNT_KEY) ?? 0) : 0;
+  const savedMode = typeof localStorage !== "undefined" ? (localStorage.getItem(SCHEDULED_MODE_KEY) as NotificationDeliveryMode | null) : null;
+  const native = await getNativeNotifications();
+
+  if (native) {
+    const permission = await native.checkPermissions().catch(() => null);
+    if (permission?.display === "granted") {
+      return { mode: "native", scheduledCount, scheduledUntil, canWakePhone: true };
+    }
+  }
+
+  if (typeof Notification === "undefined" || Notification.permission !== "granted") {
+    return { mode: "unsupported", scheduledCount, scheduledUntil, canWakePhone: false };
+  }
+
+  const mode: NotificationDeliveryMode = supportsTimestampTrigger() ? "web-background" : "web-open";
+  return { mode: savedMode ?? mode, scheduledCount, scheduledUntil, canWakePhone: mode === "web-background" };
+}
+
 export function useNotifications() {
   const [permission, setPermission] = useState<NotificationPermission>("default");
   const [enabled, setEnabledState] = useState(false);
   const [types, setTypesState] = useState<NotifTypes>(defaultNotifTypes);
+  const [status, setStatus] = useState<NotificationStatus>({
+    mode: "unsupported",
+    scheduledCount: 0,
+    scheduledUntil: null,
+    canWakePhone: false,
+  });
 
   useEffect(() => {
     if (typeof Notification !== "undefined") {
@@ -166,12 +210,20 @@ export function useNotifications() {
     }
     setEnabledState(localStorage.getItem(STORAGE_KEY) === "1");
     setTypesState(loadTypes());
+    getNotificationStatus().then(setStatus).catch(() => undefined);
   }, []);
+
+  async function refreshStatus() {
+    const next = await getNotificationStatus();
+    setStatus(next);
+    return next;
+  }
 
   async function requestPermission() {
     const native = await ensureNativeReady(true);
     if (native) {
       setPermission("granted");
+      await refreshStatus();
       return true;
     }
 
@@ -179,6 +231,7 @@ export function useNotifications() {
     const p = await Notification.requestPermission();
     setPermission(p);
     if (p === "granted") await getServiceWorkerRegistration();
+    await refreshStatus();
     return p === "granted";
   }
 
@@ -186,12 +239,19 @@ export function useNotifications() {
     localStorage.setItem(STORAGE_KEY, v ? "1" : "0");
     setEnabledState(v);
     if (!v) void clearAllScheduledNotifications();
+    void refreshStatus();
   }
 
   function setType(type: NotifType, value: boolean) {
     const next = { ...types, [type]: value };
     setTypesState(next);
     saveTypes(next);
+  }
+
+  async function scheduleAll(reminderMin?: number) {
+    const next = await scheduleAllNotifications(reminderMin);
+    await refreshStatus();
+    return next;
   }
 
   return {
@@ -201,7 +261,9 @@ export function useNotifications() {
     setEnabled,
     types,
     setType,
-    scheduleAll: scheduleAllNotifications,
+    status,
+    refreshStatus,
+    scheduleAll,
     testNotification,
   };
 }
@@ -216,6 +278,7 @@ export async function clearAllScheduledNotifications() {
   if (typeof localStorage !== "undefined") {
     localStorage.removeItem(SCHEDULED_KEY);
     localStorage.removeItem(SCHEDULED_COUNT_KEY);
+    localStorage.removeItem(SCHEDULED_MODE_KEY);
   }
 
   const native = await getNativeNotifications();
@@ -234,7 +297,7 @@ export async function clearAllScheduledNotifications() {
   }
 }
 
-async function showNotificationNow(title: string, body: string) {
+async function showNotificationNow(title: string, body: string, lines?: string[]) {
   const native = await ensureNativeReady(false);
   if (native) {
     await native.schedule({
@@ -243,10 +306,15 @@ async function showNotificationNow(title: string, body: string) {
           id: createNotificationId({ date: new Date(), title, body }),
           title,
           body,
+          largeBody: lines?.join("\n") ?? body,
+          summaryText: "نور",
+          inboxList: lines,
           channelId: NATIVE_CHANNEL_ID,
           smallIcon: "ic_stat_icon",
+          largeIcon: "ic_launcher",
           iconColor: "#1a3d2e",
           autoCancel: true,
+          group: NOTIFICATION_GROUP,
           schedule: { at: new Date(Date.now() + 100), allowWhileIdle: true },
         },
       ],
@@ -262,11 +330,13 @@ async function showNotificationNow(title: string, body: string) {
       if (reg) {
         await reg.showNotification(title, {
           body,
-          icon: "/icon-192.png",
-          badge: "/icon-192.png",
+          icon: WEB_NOTIFICATION_ICON,
+          image: WEB_NOTIFICATION_ICON,
           tag: title,
+          renotify: true,
           vibrate: [200, 100, 200],
           requireInteraction: true,
+          data: { url: "/" },
         } as any);
         return;
       }
@@ -274,7 +344,7 @@ async function showNotificationNow(title: string, body: string) {
   }
 
   try {
-    new Notification(title, { body, icon: "/icon-192.png", badge: "/icon-192.png", tag: title, requireInteraction: true });
+    new Notification(title, { body, icon: WEB_NOTIFICATION_ICON, tag: title, requireInteraction: true });
   } catch {}
 }
 
@@ -292,12 +362,15 @@ function toNativeNotification(job: NotificationJob): LocalNotificationSchema {
     id: createNotificationId(job),
     title: job.title,
     body: job.body,
-    largeBody: job.body,
+    largeBody: job.lines?.join("\n") ?? job.body,
     summaryText: "نور",
+    inboxList: job.lines,
     channelId: NATIVE_CHANNEL_ID,
     smallIcon: "ic_stat_icon",
+    largeIcon: "ic_launcher",
     iconColor: "#1a3d2e",
     autoCancel: true,
+    group: NOTIFICATION_GROUP,
     schedule: { at: job.date, allowWhileIdle: true },
   };
 }
@@ -324,13 +397,15 @@ async function scheduleNativeBatch(jobs: NotificationJob[], LocalNotifications: 
 
 type ScheduleResult = "native" | "trigger" | "timeout" | "skipped";
 
-export async function scheduleAllNotifications(reminderMin = 15) {
-  if (typeof window === "undefined") return;
+export async function scheduleAllNotifications(reminderMin = 15): Promise<NotificationStatus | undefined> {
+  if (typeof window === "undefined") return undefined;
 
   const native = await ensureNativeReady(false);
   const isNative = Boolean(native);
 
-  if (!isNative && (typeof Notification === "undefined" || Notification.permission !== "granted")) return;
+  if (!isNative && (typeof Notification === "undefined" || Notification.permission !== "granted")) {
+    return getNotificationStatus();
+  }
   clearScheduled();
 
   if (native) {
@@ -355,6 +430,7 @@ export async function scheduleAllNotifications(reminderMin = 15) {
     const today = new Date();
     const supportsBackgroundScheduling = isNative || supportsTimestampTrigger();
     const daysToSchedule = supportsBackgroundScheduling ? BACKGROUND_SCHEDULE_DAYS : 1;
+    const mode: NotificationDeliveryMode = isNative ? "native" : supportsTimestampTrigger() ? "web-background" : "web-open";
     const jobs: NotificationJob[] = [];
     const order: PrayerName[] = ["Fajr", "Dhuhr", "Asr", "Maghrib", "Isha"];
 
@@ -364,30 +440,48 @@ export async function scheduleAllNotifications(reminderMin = 15) {
 
       order.forEach((name) => {
         const prayerDate = buildPrayerDate(timings[name], scheduleDate);
+        const prayerTime = formatNotificationTime(prayerDate);
 
         if (types.prayerReminder) {
           const remTime = new Date(prayerDate.getTime() - reminderMin * 60 * 1000);
-          pushJob(jobs, remTime, `🕌 تذكير: ${prayerArabic[name]}`, `بقي ${reminderMin} دقيقة على ${prayerArabic[name]}`);
+          pushJob(jobs, remTime, `تذكير: ${prayerArabic[name]}`, `بقي ${reminderMin} دقيقة على ${prayerArabic[name]} — ${prayerTime}`, [
+            `🕌 صلاة ${prayerArabic[name]}`,
+            `⏱️ بقي ${reminderMin} دقيقة`,
+            `🕰️ الموعد: ${prayerTime}`,
+          ]);
         }
 
         if (types.prayerTime) {
-          pushJob(jobs, prayerDate, `🕌 حان وقت ${prayerArabic[name]}`, "حيّ على الصلاة، حيّ على الفلاح");
+          pushJob(jobs, prayerDate, `حان وقت ${prayerArabic[name]}`, `دخل وقت صلاة ${prayerArabic[name]} — ${prayerTime}`, [
+            `🕌 دخل وقت صلاة ${prayerArabic[name]}`,
+            `🕰️ ${prayerTime}`,
+            "حيّ على الصلاة، حيّ على الفلاح",
+          ]);
         }
 
         if (types.afterPrayer) {
           const after = new Date(prayerDate.getTime() + 5 * 60 * 1000);
-          pushJob(jobs, after, "✨ أذكار بعد الصلاة", "لا تنسَ أذكار ما بعد الصلاة");
+          pushJob(jobs, after, "أذكار بعد الصلاة", `لا تنسَ أذكار ما بعد صلاة ${prayerArabic[name]}`, [
+            `✨ بعد صلاة ${prayerArabic[name]}`,
+            "لا تنسَ أذكار ما بعد الصلاة",
+          ]);
         }
       });
 
       if (types.morning) {
         const morning = new Date(buildPrayerDate(timings.Fajr, scheduleDate).getTime() + 30 * 60 * 1000);
-        pushJob(jobs, morning, "🌅 أذكار الصباح", "ابدأ يومك بذكر الله");
+        pushJob(jobs, morning, "أذكار الصباح", `ابدأ يومك بذكر الله — ${formatNotificationTime(morning)}`, [
+          "🌅 أذكار الصباح",
+          "ابدأ يومك بذكر الله",
+        ]);
       }
 
       if (types.evening) {
         const evening = buildPrayerDate(timings.Asr, scheduleDate);
-        pushJob(jobs, evening, "🌙 أذكار المساء", "اختم نهارك بذكر الله");
+        pushJob(jobs, evening, "أذكار المساء", `اختم نهارك بذكر الله — ${formatNotificationTime(evening)}`, [
+          "🌙 أذكار المساء",
+          "اختم نهارك بذكر الله",
+        ]);
       }
     }
 
@@ -398,20 +492,23 @@ export async function scheduleAllNotifications(reminderMin = 15) {
       await scheduleNativeBatch(futureJobs, native);
       results = futureJobs.map(() => "native");
     } else {
-      results = await Promise.all(futureJobs.map((job) => scheduleAt(job.date, job.title, job.body)));
+      results = await Promise.all(futureJobs.map((job) => scheduleAt(job.date, job.title, job.body, job.lines)));
     }
 
     localStorage.setItem(SCHEDULED_KEY, getScheduleKey(addDays(today, daysToSchedule - 1)));
     localStorage.setItem(SCHEDULED_COUNT_KEY, String(futureJobs.length));
+    localStorage.setItem(SCHEDULED_MODE_KEY, mode);
     if (results.some((result) => result !== "skipped")) {
       console.info("Notifications scheduled", results.length, results[0]);
     }
+    return getNotificationStatus();
   } catch (e) {
     console.error("Failed to schedule notifications", e);
+    return getNotificationStatus();
   }
 }
 
-async function scheduleAt(date: Date, title: string, body: string): Promise<ScheduleResult> {
+async function scheduleAt(date: Date, title: string, body: string, lines?: string[]): Promise<ScheduleResult> {
   const ms = date.getTime() - Date.now();
   if (ms <= 0) return "skipped";
 
@@ -419,7 +516,7 @@ async function scheduleAt(date: Date, title: string, body: string): Promise<Sche
   if (triggered) return "trigger";
 
   if (ms > 24 * 60 * 60 * 1000) return "skipped";
-  const id = window.setTimeout(() => showNotificationNow(title, body), ms);
+  const id = window.setTimeout(() => showNotificationNow(title, body, lines), ms);
   timers.push(id);
   return "timeout";
 }
@@ -432,12 +529,14 @@ async function scheduleViaTrigger(date: Date, title: string, body: string): Prom
     if (!reg) return false;
     await reg.showNotification(title, {
       body,
-      icon: "/icon-192.png",
-      badge: "/icon-192.png",
+      icon: WEB_NOTIFICATION_ICON,
+      image: WEB_NOTIFICATION_ICON,
       tag: `${title}-${date.getTime()}`,
       showTrigger: new (window as any).TimestampTrigger(date.getTime()),
+      renotify: true,
       vibrate: [200, 100, 200],
       requireInteraction: true,
+      data: { url: "/" },
     } as any);
     return true;
   } catch (e) {
@@ -447,7 +546,12 @@ async function scheduleViaTrigger(date: Date, title: string, body: string): Prom
 }
 
 export async function testNotification() {
-  await showNotificationNow("🔔 اختبار الإشعار", "إشعارات نور تعمل بنجاح، بارك الله فيك");
+  const now = new Date();
+  await showNotificationNow("اختبار إشعارات نور", `تعمل بنجاح — ${formatNotificationTime(now)}`, [
+    "🔔 إشعارات نور تعمل بنجاح",
+    `🕰️ وقت الاختبار: ${formatNotificationTime(now)}`,
+    "بارك الله فيك",
+  ]);
 }
 
 export async function ensureDailySchedule(reminderMin = 15) {
