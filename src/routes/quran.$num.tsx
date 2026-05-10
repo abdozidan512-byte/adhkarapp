@@ -356,13 +356,14 @@ function SurahReader() {
           <button
             onClick={() => setTajweedMode((v) => !v)}
             className={cn(
-              "flex h-9 w-9 items-center justify-center rounded-full text-primary-foreground transition-all",
-              tajweedMode ? "bg-white/40 ring-2 ring-white/60" : "bg-white/15"
+              "flex h-9 items-center gap-1 rounded-full px-3 text-[11px] font-extrabold text-primary-foreground transition-all",
+              tajweedMode ? "bg-white/40 ring-2 ring-white/70" : "bg-white/15"
             )}
-            aria-label="تبديل التجويد"
+            aria-label="تبديل ألوان التجويد"
             title="إظهار/إخفاء ألوان التجويد"
           >
             <Palette className="h-4 w-4" />
+            <span>تجويد</span>
           </button>
           <button
             onClick={() => setFontSize((s) => Math.max(18, s - 2))}
