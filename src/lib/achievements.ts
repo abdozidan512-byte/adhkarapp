@@ -69,7 +69,9 @@ type UnlockListener = (a: Achievement) => void;
 const listeners = new Set<UnlockListener>();
 export function onAchievementUnlocked(fn: UnlockListener) {
   listeners.add(fn);
-  return () => listeners.delete(fn);
+  return () => {
+    listeners.delete(fn);
+  };
 }
 
 function notify(a: Achievement) {
