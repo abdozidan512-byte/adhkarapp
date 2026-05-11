@@ -1,8 +1,10 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useEffect, useState } from "react";
-import { Plus, RotateCcw, Trash2, Check, Vibrate } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { Plus, RotateCcw, Trash2, Check, Vibrate, Trophy } from "lucide-react";
+import { Link } from "@tanstack/react-router";
 import { PageHeader } from "@/components/PageHeader";
 import { getSetting, saveSetting } from "@/lib/db";
+import { recordTasbih } from "@/lib/achievements";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
