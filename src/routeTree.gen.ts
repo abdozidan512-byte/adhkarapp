@@ -13,6 +13,7 @@ import { Route as TasbihRouteImport } from './routes/tasbih'
 import { Route as SettingsRouteImport } from './routes/settings'
 import { Route as QiblaRouteImport } from './routes/qibla'
 import { Route as HadithRouteImport } from './routes/hadith'
+import { Route as AchievementsRouteImport } from './routes/achievements'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as QuranIndexRouteImport } from './routes/quran.index'
 import { Route as AzkarIndexRouteImport } from './routes/azkar.index'
@@ -37,6 +38,11 @@ const QiblaRoute = QiblaRouteImport.update({
 const HadithRoute = HadithRouteImport.update({
   id: '/hadith',
   path: '/hadith',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AchievementsRoute = AchievementsRouteImport.update({
+  id: '/achievements',
+  path: '/achievements',
   getParentRoute: () => rootRouteImport,
 } as any)
 const IndexRoute = IndexRouteImport.update({
@@ -67,6 +73,7 @@ const AzkarIdRoute = AzkarIdRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/achievements': typeof AchievementsRoute
   '/hadith': typeof HadithRoute
   '/qibla': typeof QiblaRoute
   '/settings': typeof SettingsRoute
@@ -78,6 +85,7 @@ export interface FileRoutesByFullPath {
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/achievements': typeof AchievementsRoute
   '/hadith': typeof HadithRoute
   '/qibla': typeof QiblaRoute
   '/settings': typeof SettingsRoute
@@ -90,6 +98,7 @@ export interface FileRoutesByTo {
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/achievements': typeof AchievementsRoute
   '/hadith': typeof HadithRoute
   '/qibla': typeof QiblaRoute
   '/settings': typeof SettingsRoute
@@ -103,6 +112,7 @@ export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
+    | '/achievements'
     | '/hadith'
     | '/qibla'
     | '/settings'
@@ -114,6 +124,7 @@ export interface FileRouteTypes {
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
+    | '/achievements'
     | '/hadith'
     | '/qibla'
     | '/settings'
@@ -125,6 +136,7 @@ export interface FileRouteTypes {
   id:
     | '__root__'
     | '/'
+    | '/achievements'
     | '/hadith'
     | '/qibla'
     | '/settings'
@@ -137,6 +149,7 @@ export interface FileRouteTypes {
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  AchievementsRoute: typeof AchievementsRoute
   HadithRoute: typeof HadithRoute
   QiblaRoute: typeof QiblaRoute
   SettingsRoute: typeof SettingsRoute
@@ -175,6 +188,13 @@ declare module '@tanstack/react-router' {
       path: '/hadith'
       fullPath: '/hadith'
       preLoaderRoute: typeof HadithRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/achievements': {
+      id: '/achievements'
+      path: '/achievements'
+      fullPath: '/achievements'
+      preLoaderRoute: typeof AchievementsRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/': {
@@ -217,6 +237,7 @@ declare module '@tanstack/react-router' {
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  AchievementsRoute: AchievementsRoute,
   HadithRoute: HadithRoute,
   QiblaRoute: QiblaRoute,
   SettingsRoute: SettingsRoute,

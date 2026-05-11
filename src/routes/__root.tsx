@@ -2,6 +2,7 @@ import { Outlet, createRootRoute, HeadContent, Scripts } from "@tanstack/react-r
 import { useEffect } from "react";
 import { ThemeProvider } from "@/contexts/ThemeContext";
 import { BottomNav } from "@/components/BottomNav";
+import { AchievementToast } from "@/components/AchievementToast";
 import { ensureDailySchedule } from "@/lib/notifications";
 import appCss from "../styles.css?url";
 
@@ -157,6 +158,7 @@ function RootComponent() {
         <Outlet />
       </div>
       <BottomNav />
+      <AchievementToast />
     </ThemeProvider>
   );
 }
