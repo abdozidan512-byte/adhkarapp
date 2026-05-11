@@ -116,3 +116,37 @@ function QuickCard({
     </Link>
   );
 }
+
+const DAILY_AYAHS = [
+  { text: "فَاذْكُرُونِي أَذْكُرْكُمْ وَاشْكُرُوا لِي وَلَا تَكْفُرُونِ", ref: "البقرة - 152" },
+  { text: "وَمَن يَتَّقِ اللَّهَ يَجْعَل لَّهُ مَخْرَجًا", ref: "الطلاق - 2" },
+  { text: "إِنَّ مَعَ الْعُسْرِ يُسْرًا", ref: "الشرح - 6" },
+  { text: "أَلَا بِذِكْرِ اللَّهِ تَطْمَئِنُّ الْقُلُوبُ", ref: "الرعد - 28" },
+  { text: "وَبَشِّرِ الصَّابِرِينَ", ref: "البقرة - 155" },
+  { text: "وَاللَّهُ خَيْرٌ حَافِظًا ۖ وَهُوَ أَرْحَمُ الرَّاحِمِينَ", ref: "يوسف - 64" },
+  { text: "إِنَّ اللَّهَ مَعَ الصَّابِرِينَ", ref: "البقرة - 153" },
+  { text: "وَمَا تَوْفِيقِي إِلَّا بِاللَّهِ", ref: "هود - 88" },
+  { text: "حَسْبُنَا اللَّهُ وَنِعْمَ الْوَكِيلُ", ref: "آل عمران - 173" },
+  { text: "رَبَّنَا آتِنَا فِي الدُّنْيَا حَسَنَةً وَفِي الْآخِرَةِ حَسَنَةً وَقِنَا عَذَابَ النَّارِ", ref: "البقرة - 201" },
+  { text: "وَقُل رَّبِّ زِدْنِي عِلْمًا", ref: "طه - 114" },
+  { text: "وَاللَّهُ يُحِبُّ الْمُحْسِنِينَ", ref: "آل عمران - 134" },
+  { text: "إِنَّ اللَّهَ غَفُورٌ رَّحِيمٌ", ref: "البقرة - 173" },
+  { text: "وَكَانَ فَضْلُ اللَّهِ عَلَيْكَ عَظِيمًا", ref: "النساء - 113" },
+  { text: "وَاسْتَعِينُوا بِالصَّبْرِ وَالصَّلَاةِ", ref: "البقرة - 45" },
+];
+
+function DailyAyah() {
+  const day = Math.floor(Date.now() / 86400000);
+  const a = DAILY_AYAHS[day % DAILY_AYAHS.length];
+  return (
+    <div
+      className="relative overflow-hidden rounded-3xl border p-6 text-center"
+      style={{ background: "var(--gradient-card)", boxShadow: "var(--shadow-soft)" }}
+    >
+      <p className="text-[10px] font-bold tracking-widest text-muted-foreground">آية اليوم</p>
+      <div className="mt-1 text-3xl opacity-30" style={{ color: "var(--gold)" }}>﴾﴿</div>
+      <p className="font-quran mt-2 text-xl leading-loose">{a.text}</p>
+      <p className="mt-3 text-xs text-muted-foreground">سورة {a.ref}</p>
+    </div>
+  );
+}
