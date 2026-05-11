@@ -1,11 +1,11 @@
 import { Link, useLocation } from "@tanstack/react-router";
-import { Home, BookOpen, Compass, Sparkles, Settings } from "lucide-react";
+import { Home, BookOpen, Compass, Sparkles, Settings, CircleDot } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const items = [
   { to: "/", label: "الرئيسية", icon: Home },
   { to: "/azkar", label: "الأذكار", icon: Sparkles },
-  { to: "/qibla", label: "القبلة", icon: Compass },
+  { to: "/tasbih", label: "المسبحة", icon: CircleDot },
   { to: "/quran", label: "المصحف", icon: BookOpen },
   { to: "/settings", label: "الإعدادات", icon: Settings },
 ] as const;

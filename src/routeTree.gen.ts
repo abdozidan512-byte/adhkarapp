@@ -9,6 +9,7 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
+import { Route as TasbihRouteImport } from './routes/tasbih'
 import { Route as SettingsRouteImport } from './routes/settings'
 import { Route as QiblaRouteImport } from './routes/qibla'
 import { Route as HadithRouteImport } from './routes/hadith'
@@ -18,6 +19,11 @@ import { Route as AzkarIndexRouteImport } from './routes/azkar.index'
 import { Route as QuranNumRouteImport } from './routes/quran.$num'
 import { Route as AzkarIdRouteImport } from './routes/azkar.$id'
 
+const TasbihRoute = TasbihRouteImport.update({
+  id: '/tasbih',
+  path: '/tasbih',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const SettingsRoute = SettingsRouteImport.update({
   id: '/settings',
   path: '/settings',
@@ -64,6 +70,7 @@ export interface FileRoutesByFullPath {
   '/hadith': typeof HadithRoute
   '/qibla': typeof QiblaRoute
   '/settings': typeof SettingsRoute
+  '/tasbih': typeof TasbihRoute
   '/azkar/$id': typeof AzkarIdRoute
   '/quran/$num': typeof QuranNumRoute
   '/azkar/': typeof AzkarIndexRoute
@@ -74,6 +81,7 @@ export interface FileRoutesByTo {
   '/hadith': typeof HadithRoute
   '/qibla': typeof QiblaRoute
   '/settings': typeof SettingsRoute
+  '/tasbih': typeof TasbihRoute
   '/azkar/$id': typeof AzkarIdRoute
   '/quran/$num': typeof QuranNumRoute
   '/azkar': typeof AzkarIndexRoute
@@ -85,6 +93,7 @@ export interface FileRoutesById {
   '/hadith': typeof HadithRoute
   '/qibla': typeof QiblaRoute
   '/settings': typeof SettingsRoute
+  '/tasbih': typeof TasbihRoute
   '/azkar/$id': typeof AzkarIdRoute
   '/quran/$num': typeof QuranNumRoute
   '/azkar/': typeof AzkarIndexRoute
@@ -97,6 +106,7 @@ export interface FileRouteTypes {
     | '/hadith'
     | '/qibla'
     | '/settings'
+    | '/tasbih'
     | '/azkar/$id'
     | '/quran/$num'
     | '/azkar/'
@@ -107,6 +117,7 @@ export interface FileRouteTypes {
     | '/hadith'
     | '/qibla'
     | '/settings'
+    | '/tasbih'
     | '/azkar/$id'
     | '/quran/$num'
     | '/azkar'
@@ -117,6 +128,7 @@ export interface FileRouteTypes {
     | '/hadith'
     | '/qibla'
     | '/settings'
+    | '/tasbih'
     | '/azkar/$id'
     | '/quran/$num'
     | '/azkar/'
@@ -128,6 +140,7 @@ export interface RootRouteChildren {
   HadithRoute: typeof HadithRoute
   QiblaRoute: typeof QiblaRoute
   SettingsRoute: typeof SettingsRoute
+  TasbihRoute: typeof TasbihRoute
   AzkarIdRoute: typeof AzkarIdRoute
   QuranNumRoute: typeof QuranNumRoute
   AzkarIndexRoute: typeof AzkarIndexRoute
@@ -136,6 +149,13 @@ export interface RootRouteChildren {
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
+    '/tasbih': {
+      id: '/tasbih'
+      path: '/tasbih'
+      fullPath: '/tasbih'
+      preLoaderRoute: typeof TasbihRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/settings': {
       id: '/settings'
       path: '/settings'
@@ -200,6 +220,7 @@ const rootRouteChildren: RootRouteChildren = {
   HadithRoute: HadithRoute,
   QiblaRoute: QiblaRoute,
   SettingsRoute: SettingsRoute,
+  TasbihRoute: TasbihRoute,
   AzkarIdRoute: AzkarIdRoute,
   QuranNumRoute: QuranNumRoute,
   AzkarIndexRoute: AzkarIndexRoute,
