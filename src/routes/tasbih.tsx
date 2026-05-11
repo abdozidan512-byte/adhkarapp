@@ -82,12 +82,16 @@ function TasbihPage() {
   const completed = active.count >= active.target;
 
   const tap = () => {
+    // Precise haptic: short crisp pulse for normal taps, distinct pattern at completion
+    const willComplete = active.count + 1 === active.target;
     if (vibrate && typeof navigator !== "undefined" && "vibrate" in navigator) {
-      navigator.vibrate(completed ? [40, 30, 80] : 15);
+      navigator.vibrate(willComplete ? [50, 40, 50, 40, 100] : 12);
     }
     setItems((prev) =>
       prev.map((i) => (i.id === activeId ? { ...i, count: i.count + 1 } : i))
     );
+    // Record globally for achievements (fire-and-forget)
+    recordTasbih(1);
   };
 
   const reset = () => {
