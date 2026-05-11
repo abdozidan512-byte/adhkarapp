@@ -1,5 +1,6 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { ChevronLeft, Sunrise, Sunset, Moon, Plane, Home as HomeIcon, CloudRain, Star } from "lucide-react";
+import { useMemo, useState } from "react";
+import { ChevronLeft, Sunrise, Sunset, Moon, Plane, Home as HomeIcon, CloudRain, Star, Search } from "lucide-react";
 import { azkarCategories } from "@/data/azkar";
 import { PageHeader } from "@/components/PageHeader";
 
@@ -21,11 +22,39 @@ const iconMap: Record<string, any> = {
 };
 
 function AzkarIndex() {
+  const [q, setQ] = useState("");
+
+  const filtered = useMemo(() => {
+    const term = q.trim();
+    if (!term) return azkarCategories;
+    return azkarCategories.filter((c) => {
+      if (c.title.includes(term) || c.subtitle.includes(term)) return true;
+      return c.items.some((it: any) =>
+        (it.text && String(it.text).includes(term)) ||
+        (it.zikr && String(it.zikr).includes(term))
+      );
+    });
+  }, [q]);
+
   return (
     <div>
       <PageHeader title="الأذكار" subtitle="ذكر الله طمأنينة وحصن" />
+      <div className="px-4 pt-3">
+        <div
+          className="flex items-center gap-2 rounded-2xl border px-4 py-3"
+          style={{ background: "var(--card)", boxShadow: "var(--shadow-soft)" }}
+        >
+          <Search className="h-4 w-4 text-muted-foreground" />
+          <input
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+            placeholder="ابحث في الأذكار..."
+            className="flex-1 bg-transparent text-sm outline-none"
+          />
+        </div>
+      </div>
       <div className="space-y-3 px-4 py-4">
-        {azkarCategories.map((cat) => {
+        {filtered.map((cat) => {
           const Icon = iconMap[cat.icon] ?? Star;
           return (
             <Link
@@ -56,6 +85,9 @@ function AzkarIndex() {
             </Link>
           );
         })}
+        {filtered.length === 0 && (
+          <p className="py-12 text-center text-sm text-muted-foreground">لا توجد نتائج</p>
+        )}
       </div>
     </div>
   );
