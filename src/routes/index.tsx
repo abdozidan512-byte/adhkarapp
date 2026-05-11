@@ -69,18 +69,9 @@ function HomePage() {
         <ContinueReading />
       </section>
 
-      {/* Quote */}
+      {/* Daily rotating ayah */}
       <section className="px-5 py-8">
-        <div
-          className="relative overflow-hidden rounded-3xl border p-6 text-center"
-          style={{ background: "var(--gradient-card)", boxShadow: "var(--shadow-soft)" }}
-        >
-          <div className="text-3xl opacity-30" style={{ color: "var(--gold)" }}>﴾﴿</div>
-          <p className="font-quran mt-2 text-xl leading-loose">
-            فَاذْكُرُونِي أَذْكُرْكُمْ وَاشْكُرُوا لِي وَلَا تَكْفُرُونِ
-          </p>
-          <p className="mt-3 text-xs text-muted-foreground">سورة البقرة - 152</p>
-        </div>
+        <DailyAyah />
       </section>
     </div>
   );
