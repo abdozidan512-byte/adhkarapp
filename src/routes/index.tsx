@@ -1,5 +1,5 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { Sparkles, BookOpen, Compass, Settings, Sun, Moon, BookHeart, CircleDot, Trophy } from "lucide-react";
+import { Sparkles, BookOpen, Compass, Settings, Sun, Moon, BookHeart, CircleDot, Trophy, ListChecks } from "lucide-react";
 import { PrayerTimesCard } from "@/components/PrayerTimesCard";
 import { ContinueReading } from "@/components/ContinueReading";
 import { useTheme } from "@/contexts/ThemeContext";
@@ -59,7 +59,8 @@ function HomePage() {
           <QuickCard to="/hadith" icon={BookHeart} title="الأحاديث" subtitle="من البخاري ومسلم" />
           <QuickCard to="/tasbih" icon={CircleDot} title="المسبحة" subtitle="سبّح وأضف أذكاراً" />
           <QuickCard to="/qibla" icon={Compass} title="القبلة" subtitle="بوصلة دقيقة" />
-          <QuickCard to="/achievements" icon={Trophy} title="الإنجازات" subtitle="مكافآت ومسابقة الذكر" gold />
+          <QuickCard to="/missions" icon={ListChecks} title="المهام اليومية" subtitle="أنجز مهامك وتجدد كل يوم" gold />
+          <QuickCard to="/achievements" icon={Trophy} title="الإنجازات" subtitle="مكافآت ومسابقة الذكر" />
           <QuickCard to="/settings" icon={Settings} title="الإعدادات" subtitle="ثيم، إشعارات، APK" />
         </div>
       </section>

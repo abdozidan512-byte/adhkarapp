@@ -18,6 +18,7 @@ import {
 } from "@/lib/quran-api";
 import { getCachedAudioKeys, saveReadingProgress } from "@/lib/db";
 import { cn } from "@/lib/utils";
+import { recordQuranPageRead, recordSurahCompleted } from "@/lib/achievements";
 
 export const Route = createFileRoute("/quran/$num")({
   component: SurahReader,
@@ -171,6 +172,12 @@ function SurahReader() {
       ayah: currentPage[0].numberInSurah,
       updatedAt: Date.now(),
     });
+    // Daily mission + achievement: a page was read
+    recordQuranPageRead();
+    // Reaching the last page = surah completed
+    if (page === pages.length - 1) {
+      recordSurahCompleted();
+    }
   }, [page, ayahs, pages.length, meta.number, meta.name]);
 
   const currentReciter = getReciter(reciter);

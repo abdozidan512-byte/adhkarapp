@@ -3,6 +3,7 @@ import useEmblaCarousel from "embla-carousel-react";
 import { ChevronLeft, ChevronRight, RefreshCw, Sparkles, Play, Pause, Loader2, Rewind, FastForward, Gauge } from "lucide-react";
 import type { Zikr } from "@/data/azkar";
 import { azkarSectionAudio } from "@/data/azkar-audio";
+import { recordAzkarSection } from "@/lib/achievements";
 
 function fmt(t: number) {
   if (!isFinite(t) || t < 0) t = 0;
@@ -69,6 +70,18 @@ export function ZikrCarousel({ items, title, sectionId }: { items: Zikr[]; title
     setSelected(0);
     emblaApi?.scrollTo(0);
   }, [items, emblaApi]);
+
+  // Record session completion when all counters reach 0
+  const recordedRef = useRef(false);
+  useEffect(() => { recordedRef.current = false; }, [sectionId, items]);
+  useEffect(() => {
+    if (recordedRef.current) return;
+    if (!counts.length) return;
+    if (counts.every((c) => c === 0)) {
+      recordedRef.current = true;
+      recordAzkarSection(sectionId);
+    }
+  }, [counts, sectionId]);
 
   // Initialize audio element once per section
   useEffect(() => {
