@@ -63,7 +63,7 @@ export async function fetchSurahText(surahNumber: number): Promise<Ayah[]> {
     if (idx === 0 && shouldStrip) {
       text = stripLeadingBismillah(text);
     }
-    return { numberInSurah: a.numberInSurah, text, page: a.page };
+    return { numberInSurah: a.numberInSurah, text, page: a.page, juz: a.juz };
   });
   await saveSurah(surahNumber, ayahs);
   return ayahs;
