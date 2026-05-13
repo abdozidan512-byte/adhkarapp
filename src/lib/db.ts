@@ -5,7 +5,7 @@ interface AzkarDB extends DBSchema {
     key: number; // surah number
     value: {
       number: number;
-      ayahs: { numberInSurah: number; text: string }[];
+      ayahs: { numberInSurah: number; text: string; page?: number }[];
     };
   };
   prayerTimes: {
