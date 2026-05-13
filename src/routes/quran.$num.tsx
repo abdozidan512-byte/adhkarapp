@@ -344,7 +344,7 @@ function SurahReader() {
   const showBismillah = meta.number !== 1 && meta.number !== 9;
 
   return (
-    <div className="flex h-[100dvh] flex-col" style={{ paddingBottom: "calc(5rem + env(safe-area-inset-bottom))" }}>
+    <div className="fixed inset-0 z-40 flex flex-col bg-background" style={{ paddingTop: "env(safe-area-inset-top)", paddingBottom: "env(safe-area-inset-bottom)" }}>
       {/* Top bar */}
       <div
         className="flex items-center justify-between gap-2 border-b px-3 py-3"
@@ -451,9 +451,9 @@ function SurahReader() {
       <div className="flex-1 overflow-hidden" ref={emblaRef}>
         <div className="flex h-full">
           {pages.map((pg, idx) => (
-            <div key={idx} className="h-full min-w-0 shrink-0 grow-0 basis-full px-3 py-3">
+            <div key={idx} className="h-full min-w-0 shrink-0 grow-0 basis-full px-2 py-2">
               <div
-                className="relative h-full overflow-y-auto rounded-3xl border p-5 hide-scrollbar"
+                className="relative h-full overflow-hidden rounded-2xl border p-4 hide-scrollbar"
                 style={{ background: "var(--gradient-card)", boxShadow: "var(--shadow-soft)" }}
               >
                 <div className="pattern-islamic absolute inset-0 opacity-[0.05]" />
