@@ -139,6 +139,11 @@
   --shadow-elegant: 0 10px 40px -10px color-mix(in oklab, oklch(0 0 0) 60%, transparent);
   --shadow-gold: 0 8px 30px -8px color-mix(in oklab, oklch(0.78 0.14 80) 40%, transparent);
   --shadow-soft: 0 4px 20px -4px color-mix(in oklab, oklch(0 0 0) 40%, transparent);
+
+  /* Mushaf paper (dark) — soft warm parchment-on-dark */
+  --mushaf-paper: oklch(0.22 0.025 175);
+  --mushaf-ink: oklch(0.95 0.015 90);
+  --mushaf-edge: oklch(0.32 0.04 175);
 }
 
 @layer base {
