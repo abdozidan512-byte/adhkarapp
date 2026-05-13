@@ -344,7 +344,7 @@ function SurahReader() {
   const showBismillah = meta.number !== 1 && meta.number !== 9;
 
   return (
-    <div className="flex h-[100dvh] flex-col" style={{ paddingBottom: "calc(5rem + env(safe-area-inset-bottom))" }}>
+    <div className="fixed inset-0 z-40 flex flex-col bg-background" style={{ paddingTop: "env(safe-area-inset-top)", paddingBottom: "env(safe-area-inset-bottom)" }}>
       {/* Top bar */}
       <div
         className="flex items-center justify-between gap-2 border-b px-3 py-3"
