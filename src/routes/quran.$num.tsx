@@ -48,7 +48,7 @@ const FALLBACK_PAGE_SIZE = 5; // used only if API didn't return Mushaf page numb
 function SurahReader() {
   const meta = Route.useLoaderData();
   const search = Route.useSearch();
-  const [ayahs, setAyahs] = useState<{ numberInSurah: number; text: string }[] | null>(null);
+  const [ayahs, setAyahs] = useState<{ numberInSurah: number; text: string; page?: number }[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [fontSize, setFontSize] = useState(28);
   const [reciter, setReciter] = useState<ReciterId>("ar.yasser");
