@@ -193,6 +193,42 @@
   }
   .ornament-border::before { right: -1.5rem; }
   .ornament-border::after { left: -1.5rem; }
+
+  /* Mushaf-style page (paper feel + warm edge vignette) */
+  .mushaf-page {
+    background-color: var(--mushaf-paper);
+    color: var(--mushaf-ink);
+    background-image:
+      radial-gradient(ellipse at 50% 0%, color-mix(in oklab, var(--mushaf-edge) 35%, transparent) 0%, transparent 18%),
+      radial-gradient(ellipse at 50% 100%, color-mix(in oklab, var(--mushaf-edge) 35%, transparent) 0%, transparent 18%),
+      radial-gradient(ellipse at 0% 50%, color-mix(in oklab, var(--mushaf-edge) 30%, transparent) 0%, transparent 14%),
+      radial-gradient(ellipse at 100% 50%, color-mix(in oklab, var(--mushaf-edge) 30%, transparent) 0%, transparent 14%);
+  }
+
+  /* Verse number ornament (8-point star feel via clip + ring) */
+  .ayah-ornament {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 1.7em;
+    height: 1.7em;
+    margin: 0 0.15em;
+    border-radius: 9999px;
+    background: var(--mushaf-paper);
+    color: var(--gold-foreground);
+    font-family: var(--font-arabic);
+    font-weight: 800;
+    font-size: 0.5em;
+    line-height: 1;
+    box-shadow:
+      0 0 0 1px var(--gold) inset,
+      0 0 0 3px var(--mushaf-paper) inset,
+      0 0 0 4px color-mix(in oklab, var(--gold) 80%, transparent) inset;
+    vertical-align: middle;
+    cursor: pointer;
+    transition: transform 0.15s ease;
+  }
+  .ayah-ornament:hover { transform: scale(1.08); }
 }
 
 @keyframes shimmer {
