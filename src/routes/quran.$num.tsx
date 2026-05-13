@@ -146,11 +146,24 @@ function SurahReader() {
     };
   }, []);
 
-  const pages = ayahs
-    ? Array.from({ length: Math.ceil(ayahs.length / PAGE_SIZE) }, (_, i) =>
-        ayahs.slice(i * PAGE_SIZE, (i + 1) * PAGE_SIZE)
-      )
-    : [];
+  // Group ayahs by real Mushaf page (so each swipe-page matches the printed page).
+  // If the API didn't provide page numbers, fall back to a fixed slice.
+  const pages: { numberInSurah: number; text: string; page?: number }[][] = (() => {
+    if (!ayahs) return [];
+    const hasPages = ayahs.every((a) => typeof a.page === "number");
+    if (!hasPages) {
+      return Array.from({ length: Math.ceil(ayahs.length / FALLBACK_PAGE_SIZE) }, (_, i) =>
+        ayahs.slice(i * FALLBACK_PAGE_SIZE, (i + 1) * FALLBACK_PAGE_SIZE)
+      );
+    }
+    const map = new Map<number, typeof ayahs>();
+    for (const a of ayahs) {
+      const p = a.page as number;
+      if (!map.has(p)) map.set(p, []);
+      map.get(p)!.push(a);
+    }
+    return Array.from(map.keys()).sort((a, b) => a - b).map((k) => map.get(k)!);
+  })();
 
   // Jump to ?page= once carousel & ayahs are ready
   useEffect(() => {
