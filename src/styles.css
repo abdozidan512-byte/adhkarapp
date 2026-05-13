@@ -87,6 +87,11 @@
   --shadow-gold: 0 8px 30px -8px color-mix(in oklab, oklch(0.72 0.14 75) 40%, transparent);
   --shadow-soft: 0 4px 20px -4px color-mix(in oklab, oklch(0.22 0.04 160) 10%, transparent);
 
+  /* Mushaf paper (light) */
+  --mushaf-paper: oklch(0.965 0.030 88);
+  --mushaf-ink: oklch(0.18 0.02 60);
+  --mushaf-edge: oklch(0.86 0.06 75);
+
   --transition-smooth: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
