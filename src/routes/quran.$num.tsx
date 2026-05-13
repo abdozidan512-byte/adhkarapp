@@ -369,7 +369,8 @@ function SurahReader() {
         <div className="flex-1 text-center text-primary-foreground">
           <p className="text-base font-extrabold font-quran">سورة {meta.name}</p>
           <p className="text-[10px] opacity-80">
-            صفحة {page + 1} / {pages.length} • {meta.numberOfAyahs} آية
+            {pages[page]?.[0]?.page ? `صفحة المصحف ${pages[page][0].page} • ` : ""}
+            {page + 1} / {pages.length} • {meta.numberOfAyahs} آية
           </p>
         </div>
         <div className="flex gap-1">
