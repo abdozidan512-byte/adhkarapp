@@ -1,7 +1,7 @@
 import { getSurah, saveSurah, saveAudio, getAudio } from "./db";
 import { reciters, type ReciterId } from "@/data/surahs";
 
-export type Ayah = { numberInSurah: number; text: string };
+export type Ayah = { numberInSurah: number; text: string; page?: number };
 
 // إزالة البسملة من بداية الآية الأولى لأي سورة
 // نطبّق المطابقة على النص بعد تجريد التشكيل والمسافات حتى نتعامل مع كل المصادر
@@ -42,7 +42,9 @@ export async function fetchSurahText(surahNumber: number): Promise<Ayah[]> {
   const shouldStrip = surahNumber !== 1 && surahNumber !== 9;
 
   const cached = await getSurah(surahNumber);
-  if (cached) {
+  // Only use cache if it already includes the Mushaf page numbers
+  const cacheHasPages = cached?.ayahs?.length && cached.ayahs.every((a: any) => typeof a.page === "number");
+  if (cached && cacheHasPages) {
     if (shouldStrip && cached.ayahs.length > 0) {
       const first = cached.ayahs[0];
       const cleaned = stripLeadingBismillah(first.text);
@@ -61,7 +63,7 @@ export async function fetchSurahText(surahNumber: number): Promise<Ayah[]> {
     if (idx === 0 && shouldStrip) {
       text = stripLeadingBismillah(text);
     }
-    return { numberInSurah: a.numberInSurah, text };
+    return { numberInSurah: a.numberInSurah, text, page: a.page };
   });
   await saveSurah(surahNumber, ayahs);
   return ayahs;

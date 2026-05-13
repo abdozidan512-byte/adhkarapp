@@ -5,7 +5,7 @@ interface AzkarDB extends DBSchema {
     key: number; // surah number
     value: {
       number: number;
-      ayahs: { numberInSurah: number; text: string }[];
+      ayahs: { numberInSurah: number; text: string; page?: number }[];
     };
   };
   prayerTimes: {
@@ -64,7 +64,7 @@ export async function getSetting<T>(key: string): Promise<T | undefined> {
   return (await db.get("settings", key)) as T | undefined;
 }
 
-export async function saveSurah(number: number, ayahs: { numberInSurah: number; text: string }[]) {
+export async function saveSurah(number: number, ayahs: { numberInSurah: number; text: string; page?: number }[]) {
   const db = await getDB();
   if (!db) return;
   await db.put("quran", { number, ayahs });

@@ -43,12 +43,12 @@ export const Route = createFileRoute("/quran/$num")({
   }),
 });
 
-const PAGE_SIZE = 5; // ayahs per swipe page
+const FALLBACK_PAGE_SIZE = 5; // used only if API didn't return Mushaf page numbers
 
 function SurahReader() {
   const meta = Route.useLoaderData();
   const search = Route.useSearch();
-  const [ayahs, setAyahs] = useState<{ numberInSurah: number; text: string }[] | null>(null);
+  const [ayahs, setAyahs] = useState<{ numberInSurah: number; text: string; page?: number }[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [fontSize, setFontSize] = useState(28);
   const [reciter, setReciter] = useState<ReciterId>("ar.yasser");
@@ -146,11 +146,24 @@ function SurahReader() {
     };
   }, []);
 
-  const pages = ayahs
-    ? Array.from({ length: Math.ceil(ayahs.length / PAGE_SIZE) }, (_, i) =>
-        ayahs.slice(i * PAGE_SIZE, (i + 1) * PAGE_SIZE)
-      )
-    : [];
+  // Group ayahs by real Mushaf page (so each swipe-page matches the printed page).
+  // If the API didn't provide page numbers, fall back to a fixed slice.
+  const pages: { numberInSurah: number; text: string; page?: number }[][] = (() => {
+    if (!ayahs) return [];
+    const hasPages = ayahs.every((a) => typeof a.page === "number");
+    if (!hasPages) {
+      return Array.from({ length: Math.ceil(ayahs.length / FALLBACK_PAGE_SIZE) }, (_, i) =>
+        ayahs.slice(i * FALLBACK_PAGE_SIZE, (i + 1) * FALLBACK_PAGE_SIZE)
+      );
+    }
+    const map = new Map<number, typeof ayahs>();
+    for (const a of ayahs) {
+      const p = a.page as number;
+      if (!map.has(p)) map.set(p, []);
+      map.get(p)!.push(a);
+    }
+    return Array.from(map.keys()).sort((a, b) => a - b).map((k) => map.get(k)!);
+  })();
 
   // Jump to ?page= once carousel & ayahs are ready
   useEffect(() => {
@@ -356,7 +369,8 @@ function SurahReader() {
         <div className="flex-1 text-center text-primary-foreground">
           <p className="text-base font-extrabold font-quran">سورة {meta.name}</p>
           <p className="text-[10px] opacity-80">
-            صفحة {page + 1} / {pages.length} • {meta.numberOfAyahs} آية
+            {pages[page]?.[0]?.page ? `صفحة المصحف ${pages[page][0].page} • ` : ""}
+            {page + 1} / {pages.length} • {meta.numberOfAyahs} آية
           </p>
         </div>
         <div className="flex gap-1">
