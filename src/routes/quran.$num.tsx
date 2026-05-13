@@ -475,22 +475,24 @@ function SurahReader() {
       <div className="flex-1 overflow-hidden" ref={emblaRef}>
         <div className="flex h-full">
           {pages.map((pg, idx) => (
-            <div key={idx} className="h-full min-w-0 shrink-0 grow-0 basis-full px-2 py-2">
+            <div key={idx} className="h-full min-w-0 shrink-0 grow-0 basis-full">
               <div
-                className="relative h-full overflow-hidden rounded-2xl border p-4 hide-scrollbar"
-                style={{ background: "var(--gradient-card)", boxShadow: "var(--shadow-soft)" }}
+                className="mushaf-page relative h-full overflow-hidden p-4"
+                onClick={() => setChromeVisible((v) => !v)}
               >
-                <div className="pattern-islamic absolute inset-0 opacity-[0.05]" />
-                <div className="relative">
+                <div className="relative flex h-full flex-col">
                   {idx === 0 && showBismillah && (
                     <p
-                      className="font-quran mb-6 text-center"
-                      style={{ fontSize: fontSize * 1.1, color: "var(--gold)" }}
+                      className="font-quran mb-3 text-center"
+                      style={{ fontSize: fontSize * 1.05, color: "var(--gold)" }}
                     >
                       بِسْمِ اللَّهِ الرَّحْمَٰنِ الرَّحِيمِ
                     </p>
                   )}
-                  <div className="font-quran text-justify leading-loose" style={{ fontSize, lineHeight: 2.4 }}>
+                  <div
+                    className="font-quran flex-1 overflow-hidden text-justify"
+                    style={{ fontSize, lineHeight: 2.1, color: "var(--mushaf-ink)", textAlignLast: "center" as any }}
+                  >
                     {tajweedMode && tajweedLoading && (
                       <span className="mb-2 inline-flex items-center gap-2 rounded-full border bg-card px-2 py-1 text-[10px] text-muted-foreground">
                         <Loader2 className="h-3 w-3 animate-spin" /> جاري تحميل التجويد...
@@ -499,71 +501,34 @@ function SurahReader() {
                     {pg.map((a) => {
                       const selected = selectedAyahs.has(a.numberInSurah);
                       const isPlaying = playing === a.numberInSurah;
-                      const cached = isCached(a.numberInSurah);
                       const tajweedText = tajweedMode
                         ? tajweedAyahs?.find((t) => t.numberInSurah === a.numberInSurah)?.text
                         : undefined;
                       return (
                         <span key={a.numberInSurah}>
                           <span
-                            onClick={() => toggleSelect(a.numberInSurah)}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              toggleSelect(a.numberInSurah);
+                            }}
                             className={cn(
-                              "cursor-pointer rounded-md px-0.5 transition-colors",
-                              isPlaying && "bg-[color-mix(in_oklab,var(--gold)_25%,transparent)]",
-                              selected && !isPlaying && "bg-[color-mix(in_oklab,var(--primary)_15%,transparent)]"
+                              "rounded-md transition-colors",
+                              isPlaying && "bg-[color-mix(in_oklab,var(--gold)_28%,transparent)]",
+                              selected && !isPlaying && "bg-[color-mix(in_oklab,var(--primary)_18%,transparent)]"
                             )}
                           >
                             {tajweedText ? renderTajweed(tajweedText) : a.text}
-                          </span>{" "}
-                          <button
+                          </span>
+                          <span
+                            className="ayah-ornament"
                             onClick={(e) => {
                               e.stopPropagation();
-                              if (isSurahMode) return;
-                              if (isPlaying) stopPlay();
-                              else playAyah(a.numberInSurah);
-                            }}
-                            className="inline-flex h-7 w-7 items-center justify-center rounded-full border align-middle text-[11px] font-bold transition-all hover:scale-110"
-                            style={{
-                              background: "var(--gradient-gold)",
-                              color: "var(--gold-foreground)",
-                              borderColor: "var(--gold)",
-                              opacity: isSurahMode ? 0.7 : 1,
+                              toggleSelect(a.numberInSurah);
                             }}
                             aria-label={`آية ${a.numberInSurah}`}
                           >
                             {a.numberInSurah}
-                          </button>{" "}
-                          {!isSurahMode && (
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                downloadAyah(a.numberInSurah);
-                              }}
-                              className="inline-flex h-5 w-5 items-center justify-center rounded-full text-muted-foreground hover:text-primary"
-                              aria-label="تحميل الآية"
-                            >
-                              {downloading?.ayah === a.numberInSurah ? (
-                                <Loader2 className="h-3 w-3 animate-spin" />
-                              ) : cached ? (
-                                <Check className="h-3 w-3" style={{ color: "var(--gold)" }} />
-                              ) : (
-                                <Download className="h-3 w-3" />
-                              )}
-                            </button>
-                          )}{" "}
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setTafsirAyah(a.numberInSurah);
-                            }}
-                            className="inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-extrabold text-primary hover:bg-primary hover:text-primary-foreground transition-colors"
-                            style={{ borderColor: "var(--gold)" }}
-                            aria-label="عرض تفسير الآية"
-                            title="عرض تفسير الآية"
-                          >
-                            <BookOpen className="h-3 w-3" />
-                            <span>تفسير</span>
-                          </button>{" "}
+                          </span>{" "}
                         </span>
                       );
                     })}
@@ -575,16 +540,74 @@ function SurahReader() {
         </div>
       </div>
 
-      {/* Page indicators */}
-      <div className="flex justify-center gap-1 px-4 py-2">
-        {pages.map((_, i) => (
-          <button
-            key={i}
-            onClick={() => emblaApi?.scrollTo(i)}
-            className={cn("h-1.5 rounded-full transition-all", i === page ? "w-6 bg-primary" : "w-1.5 bg-muted")}
-          />
-        ))}
+      {/* Mushaf bottom strip — surah name | page number | juz */}
+      <div
+        className="flex items-center justify-between border-t px-5 py-2 text-xs font-bold"
+        style={{
+          background: "color-mix(in oklab, var(--mushaf-paper) 92%, var(--mushaf-edge))",
+          color: "var(--mushaf-ink)",
+          borderColor: "color-mix(in oklab, var(--gold) 35%, transparent)",
+        }}
+      >
+        <span className="font-quran" style={{ color: "color-mix(in oklab, var(--mushaf-ink) 75%, transparent)" }}>
+          {currentJuz ? `الجزء ${currentJuz}` : ""}
+        </span>
+        <span
+          className="font-quran tabular-nums"
+          style={{ fontSize: 16, color: "var(--gold)" }}
+        >
+          {currentMushafPage ?? page + 1}
+        </span>
+        <span className="font-quran" style={{ color: "color-mix(in oklab, var(--mushaf-ink) 75%, transparent)" }}>
+          سورة {meta.name}
+        </span>
       </div>
+
+      {/* Floating action bar for selected ayahs */}
+      {selectedAyahs.size > 0 && (
+        <div
+          className="absolute bottom-12 left-1/2 z-50 flex -translate-x-1/2 items-center gap-1 rounded-full border px-2 py-1.5 shadow-2xl"
+          style={{ background: "var(--card)", borderColor: "var(--gold)" }}
+        >
+          <span className="px-2 text-[11px] font-extrabold" style={{ color: "var(--gold)" }}>
+            {selectedAyahs.size} محددة
+          </span>
+          {!isSurahMode && (
+            <button
+              onClick={() => playSelected()}
+              className="flex h-9 items-center gap-1 rounded-full px-3 text-[11px] font-bold"
+              style={{ background: "var(--gradient-primary)", color: "var(--primary-foreground)" }}
+            >
+              <Play className="h-3.5 w-3.5" /> تشغيل
+            </button>
+          )}
+          {selectedAyahs.size === 1 && (
+            <button
+              onClick={() => setTafsirAyah(Array.from(selectedAyahs)[0])}
+              className="flex h-9 items-center gap-1 rounded-full border bg-card px-3 text-[11px] font-bold"
+              style={{ borderColor: "var(--gold)", color: "var(--gold)" }}
+            >
+              <BookOpen className="h-3.5 w-3.5" /> تفسير
+            </button>
+          )}
+          {!isSurahMode && selectedAyahs.size === 1 && (
+            <button
+              onClick={() => downloadAyah(Array.from(selectedAyahs)[0])}
+              className="flex h-9 w-9 items-center justify-center rounded-full border bg-card"
+              aria-label="تحميل"
+            >
+              <Download className="h-3.5 w-3.5" />
+            </button>
+          )}
+          <button
+            onClick={() => setSelectedAyahs(new Set())}
+            className="flex h-9 w-9 items-center justify-center rounded-full bg-muted"
+            aria-label="إلغاء"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+      )}
 
       {/* Reciter sheet */}
       {showReciterSheet && (
