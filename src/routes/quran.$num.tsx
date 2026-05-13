@@ -149,7 +149,7 @@ function SurahReader() {
 
   // Group ayahs by real Mushaf page (so each swipe-page matches the printed page).
   // If the API didn't provide page numbers, fall back to a fixed slice.
-  const pages: { numberInSurah: number; text: string; page?: number }[][] = (() => {
+  const pages: { numberInSurah: number; text: string; page?: number; juz?: number }[][] = (() => {
     if (!ayahs) return [];
     const hasPages = ayahs.every((a) => typeof a.page === "number");
     if (!hasPages) {
