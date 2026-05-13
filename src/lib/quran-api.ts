@@ -1,7 +1,7 @@
 import { getSurah, saveSurah, saveAudio, getAudio } from "./db";
 import { reciters, type ReciterId } from "@/data/surahs";
 
-export type Ayah = { numberInSurah: number; text: string; page?: number };
+export type Ayah = { numberInSurah: number; text: string; page?: number; juz?: number };
 
 // إزالة البسملة من بداية الآية الأولى لأي سورة
 // نطبّق المطابقة على النص بعد تجريد التشكيل والمسافات حتى نتعامل مع كل المصادر
@@ -63,7 +63,7 @@ export async function fetchSurahText(surahNumber: number): Promise<Ayah[]> {
     if (idx === 0 && shouldStrip) {
       text = stripLeadingBismillah(text);
     }
-    return { numberInSurah: a.numberInSurah, text, page: a.page };
+    return { numberInSurah: a.numberInSurah, text, page: a.page, juz: a.juz };
   });
   await saveSurah(surahNumber, ayahs);
   return ayahs;
