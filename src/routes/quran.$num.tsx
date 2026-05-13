@@ -43,7 +43,7 @@ export const Route = createFileRoute("/quran/$num")({
   }),
 });
 
-const PAGE_SIZE = 5; // ayahs per swipe page
+const FALLBACK_PAGE_SIZE = 5; // used only if API didn't return Mushaf page numbers
 
 function SurahReader() {
   const meta = Route.useLoaderData();
