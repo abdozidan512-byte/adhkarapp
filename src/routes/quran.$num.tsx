@@ -515,7 +515,13 @@ function SurahReader() {
       </div>
 
       {/* Ayah pages — horizontal carousel */}
-      <div className="flex-1 overflow-hidden" ref={emblaRef}>
+      <div
+        className="relative flex-1 overflow-hidden"
+        ref={(el) => {
+          carouselRef.current = el;
+          emblaRef(el);
+        }}
+      >
         <div className="flex h-full">
           {pages.map((pg, idx) => (
             <div key={idx} className="h-full min-w-0 shrink-0 grow-0 basis-full">
@@ -525,7 +531,7 @@ function SurahReader() {
               >
                 <MushafPage
                   ayahs={pg}
-                  baseFontSize={fontSize}
+                  fontSize={fontSize}
                   showBismillah={idx === 0 && showBismillah}
                   tajweedMode={tajweedMode}
                   tajweedAyahs={tajweedAyahs}
@@ -538,6 +544,21 @@ function SurahReader() {
             </div>
           ))}
         </div>
+
+        {/* Hidden measurer — same width/font as a real page minus padding */}
+        <div
+          aria-hidden
+          ref={measureRef}
+          className="font-quran pointer-events-none invisible absolute left-0 top-0 text-justify"
+          style={{
+            fontSize: fontSize,
+            lineHeight: 2.0,
+            width: "calc(100% - 32px)",
+            margin: 16,
+            textAlignLast: "center" as any,
+            whiteSpace: "normal",
+          }}
+        />
       </div>
 
       {/* Mushaf bottom strip — surah name | page number | juz */}
