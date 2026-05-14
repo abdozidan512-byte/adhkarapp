@@ -795,7 +795,7 @@ function SurahReader() {
 
 type MushafPageProps = {
   ayahs: { numberInSurah: number; text: string; page?: number; juz?: number }[];
-  baseFontSize: number;
+  fontSize: number;
   showBismillah: boolean;
   tajweedMode: boolean;
   tajweedAyahs: TajweedAyah[] | null;
@@ -807,7 +807,7 @@ type MushafPageProps = {
 
 function MushafPage({
   ayahs,
-  baseFontSize,
+  fontSize,
   showBismillah,
   tajweedMode,
   tajweedAyahs,
@@ -816,58 +816,19 @@ function MushafPage({
   playing,
   onToggleSelect,
 }: MushafPageProps) {
-  const containerRef = useRef<HTMLDivElement | null>(null);
-  const textRef = useRef<HTMLDivElement | null>(null);
-  const [effective, setEffective] = useState(baseFontSize);
-
-  useEffect(() => {
-    setEffective(baseFontSize);
-  }, [baseFontSize, ayahs, tajweedMode, tajweedAyahs]);
-
-  useEffect(() => {
-    const container = containerRef.current;
-    const text = textRef.current;
-    if (!container || !text) return;
-
-    let raf = 0;
-    const fit = () => {
-      cancelAnimationFrame(raf);
-      raf = requestAnimationFrame(() => {
-        let size = baseFontSize;
-        text.style.fontSize = `${size}px`;
-        const minSize = 14;
-        // shrink until content fits container
-        let guard = 60;
-        while (text.scrollHeight > container.clientHeight && size > minSize && guard-- > 0) {
-          size -= 1;
-          text.style.fontSize = `${size}px`;
-        }
-        setEffective(size);
-      });
-    };
-    fit();
-    const ro = new ResizeObserver(fit);
-    ro.observe(container);
-    return () => {
-      cancelAnimationFrame(raf);
-      ro.disconnect();
-    };
-  }, [baseFontSize, ayahs, tajweedMode, tajweedAyahs]);
-
   return (
-    <div ref={containerRef} className="relative flex h-full flex-col">
+    <div className="relative flex h-full flex-col">
       {showBismillah && (
         <p
           className="font-quran mb-3 text-center"
-          style={{ fontSize: effective * 1.05, color: "var(--gold)" }}
+          style={{ fontSize: fontSize * 1.05, color: "var(--gold)" }}
         >
           بِسْمِ اللَّهِ الرَّحْمَٰنِ الرَّحِيمِ
         </p>
       )}
       <div
-        ref={textRef}
         className="font-quran flex-1 overflow-hidden text-justify"
-        style={{ fontSize: effective, lineHeight: 2.0, color: "var(--mushaf-ink)", textAlignLast: "center" as any }}
+        style={{ fontSize, lineHeight: 2.0, color: "var(--mushaf-ink)", textAlignLast: "center" as any }}
       >
         {tajweedMode && tajweedLoading && (
           <span className="mb-2 inline-flex items-center gap-2 rounded-full border bg-card px-2 py-1 text-[10px] text-muted-foreground">
