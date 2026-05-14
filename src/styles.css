@@ -210,20 +210,18 @@
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    width: 1.7em;
-    height: 1.7em;
+    width: 1.5em;
+    height: 1.5em;
     margin: 0 0.15em;
     border-radius: 9999px;
-    background: var(--mushaf-paper);
-    color: var(--gold-foreground);
+    background: color-mix(in oklab, var(--gold) 14%, var(--mushaf-paper));
+    color: var(--gold);
     font-family: var(--font-arabic);
     font-weight: 800;
-    font-size: 0.5em;
+    font-size: 0.6em;
     line-height: 1;
     box-shadow:
-      0 0 0 1px var(--gold) inset,
-      0 0 0 3px var(--mushaf-paper) inset,
-      0 0 0 4px color-mix(in oklab, var(--gold) 80%, transparent) inset;
+      0 0 0 1.5px var(--gold) inset;
     vertical-align: middle;
     cursor: pointer;
     transition: transform 0.15s ease;

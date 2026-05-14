@@ -480,60 +480,17 @@ function SurahReader() {
                 className="mushaf-page relative h-full overflow-hidden p-4"
                 onClick={() => setChromeVisible((v) => !v)}
               >
-                <div className="relative flex h-full flex-col">
-                  {idx === 0 && showBismillah && (
-                    <p
-                      className="font-quran mb-3 text-center"
-                      style={{ fontSize: fontSize * 1.05, color: "var(--gold)" }}
-                    >
-                      بِسْمِ اللَّهِ الرَّحْمَٰنِ الرَّحِيمِ
-                    </p>
-                  )}
-                  <div
-                    className="font-quran flex-1 overflow-hidden text-justify"
-                    style={{ fontSize, lineHeight: 2.1, color: "var(--mushaf-ink)", textAlignLast: "center" as any }}
-                  >
-                    {tajweedMode && tajweedLoading && (
-                      <span className="mb-2 inline-flex items-center gap-2 rounded-full border bg-card px-2 py-1 text-[10px] text-muted-foreground">
-                        <Loader2 className="h-3 w-3 animate-spin" /> جاري تحميل التجويد...
-                      </span>
-                    )}
-                    {pg.map((a) => {
-                      const selected = selectedAyahs.has(a.numberInSurah);
-                      const isPlaying = playing === a.numberInSurah;
-                      const tajweedText = tajweedMode
-                        ? tajweedAyahs?.find((t) => t.numberInSurah === a.numberInSurah)?.text
-                        : undefined;
-                      return (
-                        <span key={a.numberInSurah}>
-                          <span
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              toggleSelect(a.numberInSurah);
-                            }}
-                            className={cn(
-                              "rounded-md transition-colors",
-                              isPlaying && "bg-[color-mix(in_oklab,var(--gold)_28%,transparent)]",
-                              selected && !isPlaying && "bg-[color-mix(in_oklab,var(--primary)_18%,transparent)]"
-                            )}
-                          >
-                            {tajweedText ? renderTajweed(tajweedText) : a.text}
-                          </span>
-                          <span
-                            className="ayah-ornament"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              toggleSelect(a.numberInSurah);
-                            }}
-                            aria-label={`آية ${a.numberInSurah}`}
-                          >
-                            {a.numberInSurah}
-                          </span>{" "}
-                        </span>
-                      );
-                    })}
-                  </div>
-                </div>
+                <MushafPage
+                  ayahs={pg}
+                  baseFontSize={fontSize}
+                  showBismillah={idx === 0 && showBismillah}
+                  tajweedMode={tajweedMode}
+                  tajweedAyahs={tajweedAyahs}
+                  tajweedLoading={tajweedLoading}
+                  selectedAyahs={selectedAyahs}
+                  playing={playing}
+                  onToggleSelect={(n) => toggleSelect(n)}
+                />
               </div>
             </div>
           ))}
@@ -768,6 +725,126 @@ function SurahReader() {
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+type MushafPageProps = {
+  ayahs: { numberInSurah: number; text: string; page?: number; juz?: number }[];
+  baseFontSize: number;
+  showBismillah: boolean;
+  tajweedMode: boolean;
+  tajweedAyahs: TajweedAyah[] | null;
+  tajweedLoading: boolean;
+  selectedAyahs: Set<number>;
+  playing: number | null;
+  onToggleSelect: (n: number) => void;
+};
+
+function MushafPage({
+  ayahs,
+  baseFontSize,
+  showBismillah,
+  tajweedMode,
+  tajweedAyahs,
+  tajweedLoading,
+  selectedAyahs,
+  playing,
+  onToggleSelect,
+}: MushafPageProps) {
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  const textRef = useRef<HTMLDivElement | null>(null);
+  const [effective, setEffective] = useState(baseFontSize);
+
+  useEffect(() => {
+    setEffective(baseFontSize);
+  }, [baseFontSize, ayahs, tajweedMode, tajweedAyahs]);
+
+  useEffect(() => {
+    const container = containerRef.current;
+    const text = textRef.current;
+    if (!container || !text) return;
+
+    let raf = 0;
+    const fit = () => {
+      cancelAnimationFrame(raf);
+      raf = requestAnimationFrame(() => {
+        let size = baseFontSize;
+        text.style.fontSize = `${size}px`;
+        const minSize = 14;
+        // shrink until content fits container
+        let guard = 60;
+        while (text.scrollHeight > container.clientHeight && size > minSize && guard-- > 0) {
+          size -= 1;
+          text.style.fontSize = `${size}px`;
+        }
+        setEffective(size);
+      });
+    };
+    fit();
+    const ro = new ResizeObserver(fit);
+    ro.observe(container);
+    return () => {
+      cancelAnimationFrame(raf);
+      ro.disconnect();
+    };
+  }, [baseFontSize, ayahs, tajweedMode, tajweedAyahs]);
+
+  return (
+    <div ref={containerRef} className="relative flex h-full flex-col">
+      {showBismillah && (
+        <p
+          className="font-quran mb-3 text-center"
+          style={{ fontSize: effective * 1.05, color: "var(--gold)" }}
+        >
+          بِسْمِ اللَّهِ الرَّحْمَٰنِ الرَّحِيمِ
+        </p>
+      )}
+      <div
+        ref={textRef}
+        className="font-quran flex-1 overflow-hidden text-justify"
+        style={{ fontSize: effective, lineHeight: 2.0, color: "var(--mushaf-ink)", textAlignLast: "center" as any }}
+      >
+        {tajweedMode && tajweedLoading && (
+          <span className="mb-2 inline-flex items-center gap-2 rounded-full border bg-card px-2 py-1 text-[10px] text-muted-foreground">
+            <Loader2 className="h-3 w-3 animate-spin" /> جاري تحميل التجويد...
+          </span>
+        )}
+        {ayahs.map((a) => {
+          const selected = selectedAyahs.has(a.numberInSurah);
+          const isPlaying = playing === a.numberInSurah;
+          const tajweedText = tajweedMode
+            ? tajweedAyahs?.find((t) => t.numberInSurah === a.numberInSurah)?.text
+            : undefined;
+          return (
+            <span key={a.numberInSurah}>
+              <span
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onToggleSelect(a.numberInSurah);
+                }}
+                className={cn(
+                  "rounded-md transition-colors",
+                  isPlaying && "bg-[color-mix(in_oklab,var(--gold)_28%,transparent)]",
+                  selected && !isPlaying && "bg-[color-mix(in_oklab,var(--primary)_18%,transparent)]"
+                )}
+              >
+                {tajweedText ? renderTajweed(tajweedText) : a.text}
+              </span>
+              <span
+                className="ayah-ornament tabular-nums"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onToggleSelect(a.numberInSurah);
+                }}
+                aria-label={`آية ${a.numberInSurah}`}
+              >
+                {a.numberInSurah}
+              </span>{" "}
+            </span>
+          );
+        })}
+      </div>
     </div>
   );
 }
