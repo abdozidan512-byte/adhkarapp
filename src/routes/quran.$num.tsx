@@ -1,5 +1,5 @@
 import { createFileRoute, Link, notFound } from "@tanstack/react-router";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import useEmblaCarousel from "embla-carousel-react";
 import { ChevronRight, ZoomIn, ZoomOut, Play, Pause, Download, Check, Loader2, Volume2, Palette, Info, BookOpen, X } from "lucide-react";
 import { surahs, reciters, type ReciterId } from "@/data/surahs";
@@ -139,6 +139,7 @@ function SurahReader() {
     };
   }, [emblaApi]);
 
+
   // Stop audio on unmount
   useEffect(() => {
     return () => {
@@ -147,24 +148,72 @@ function SurahReader() {
     };
   }, []);
 
-  // Group ayahs by real Mushaf page (so each swipe-page matches the printed page).
-  // If the API didn't provide page numbers, fall back to a fixed slice.
-  const pages: { numberInSurah: number; text: string; page?: number; juz?: number }[][] = (() => {
-    if (!ayahs) return [];
-    const hasPages = ayahs.every((a) => typeof a.page === "number");
-    if (!hasPages) {
-      return Array.from({ length: Math.ceil(ayahs.length / FALLBACK_PAGE_SIZE) }, (_, i) =>
-        ayahs.slice(i * FALLBACK_PAGE_SIZE, (i + 1) * FALLBACK_PAGE_SIZE)
-      );
-    }
-    const map = new Map<number, typeof ayahs>();
-    for (const a of ayahs) {
-      const p = a.page as number;
-      if (!map.has(p)) map.set(p, []);
-      map.get(p)!.push(a);
-    }
-    return Array.from(map.keys()).sort((a, b) => a - b).map((k) => map.get(k)!);
-  })();
+  // Dynamic pagination: measure how many ayahs fit on the current screen
+  // at the chosen font size, and split at full-ayah boundaries only.
+  const carouselRef = useRef<HTMLDivElement | null>(null);
+  const measureRef = useRef<HTMLDivElement | null>(null);
+  const [pages, setPages] = useState<{ numberInSurah: number; text: string; page?: number; juz?: number }[][]>([]);
+
+  useLayoutEffect(() => {
+    if (!ayahs) return;
+    const carousel = carouselRef.current;
+    const measurer = measureRef.current;
+    if (!carousel || !measurer) return;
+
+    const showBismillah = meta.number !== 1 && meta.number !== 9;
+
+    const compute = () => {
+      const totalH = carousel.clientHeight;
+      // .mushaf-page padding p-4 = 16px each side -> 32 vertical
+      const PADDING_Y = 32;
+      const baseAvail = Math.max(0, totalH - PADDING_Y);
+      // approximate bismillah height for first page
+      const bismillahH = showBismillah ? fontSize * 1.05 * 1.4 + 12 : 0;
+
+      const result: typeof ayahs[] = [];
+      let i = 0;
+      while (i < ayahs.length) {
+        const isFirst = result.length === 0;
+        const avail = baseAvail - (isFirst ? bismillahH : 0);
+        measurer.innerHTML = "";
+        let lastFitIdx = i - 1;
+        for (let j = i; j < ayahs.length; j++) {
+          const span = document.createElement("span");
+          // mirror the rendering: text + ornament circle + space
+          const safeText = ayahs[j].text;
+          span.innerHTML =
+            safeText.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]!)) +
+            `<span class="ayah-ornament tabular-nums">${ayahs[j].numberInSurah}</span> `;
+          measurer.appendChild(span);
+          if (measurer.scrollHeight > avail) {
+            if (j === i) {
+              // single ayah taller than the page: include it alone, advance
+              lastFitIdx = j;
+            } else {
+              measurer.removeChild(span);
+            }
+            break;
+          }
+          lastFitIdx = j;
+        }
+        const next = lastFitIdx + 1;
+        result.push(ayahs.slice(i, next));
+        i = next;
+      }
+      setPages(result);
+    };
+
+    compute();
+    const ro = new ResizeObserver(compute);
+    ro.observe(carousel);
+    return () => ro.disconnect();
+  }, [ayahs, fontSize, meta.number, tajweedMode, tajweedAyahs]);
+
+  // Re-init embla whenever the page list changes (font size / viewport)
+  useEffect(() => {
+    if (!emblaApi) return;
+    emblaApi.reInit();
+  }, [emblaApi, pages.length]);
 
   // Jump to ?page= once carousel & ayahs are ready
   useEffect(() => {
@@ -472,7 +521,13 @@ function SurahReader() {
       </div>
 
       {/* Ayah pages — horizontal carousel */}
-      <div className="flex-1 overflow-hidden" ref={emblaRef}>
+      <div
+        className="relative flex-1 overflow-hidden"
+        ref={(el) => {
+          carouselRef.current = el;
+          emblaRef(el);
+        }}
+      >
         <div className="flex h-full">
           {pages.map((pg, idx) => (
             <div key={idx} className="h-full min-w-0 shrink-0 grow-0 basis-full">
@@ -482,7 +537,7 @@ function SurahReader() {
               >
                 <MushafPage
                   ayahs={pg}
-                  baseFontSize={fontSize}
+                  fontSize={fontSize}
                   showBismillah={idx === 0 && showBismillah}
                   tajweedMode={tajweedMode}
                   tajweedAyahs={tajweedAyahs}
@@ -495,6 +550,21 @@ function SurahReader() {
             </div>
           ))}
         </div>
+
+        {/* Hidden measurer — same width/font as a real page minus padding */}
+        <div
+          aria-hidden
+          ref={measureRef}
+          className="font-quran pointer-events-none invisible absolute left-0 top-0 text-justify"
+          style={{
+            fontSize: fontSize,
+            lineHeight: 2.0,
+            width: "calc(100% - 32px)",
+            margin: 16,
+            textAlignLast: "center" as any,
+            whiteSpace: "normal",
+          }}
+        />
       </div>
 
       {/* Mushaf bottom strip — surah name | page number | juz */}
@@ -731,7 +801,7 @@ function SurahReader() {
 
 type MushafPageProps = {
   ayahs: { numberInSurah: number; text: string; page?: number; juz?: number }[];
-  baseFontSize: number;
+  fontSize: number;
   showBismillah: boolean;
   tajweedMode: boolean;
   tajweedAyahs: TajweedAyah[] | null;
@@ -743,7 +813,7 @@ type MushafPageProps = {
 
 function MushafPage({
   ayahs,
-  baseFontSize,
+  fontSize,
   showBismillah,
   tajweedMode,
   tajweedAyahs,
@@ -752,58 +822,19 @@ function MushafPage({
   playing,
   onToggleSelect,
 }: MushafPageProps) {
-  const containerRef = useRef<HTMLDivElement | null>(null);
-  const textRef = useRef<HTMLDivElement | null>(null);
-  const [effective, setEffective] = useState(baseFontSize);
-
-  useEffect(() => {
-    setEffective(baseFontSize);
-  }, [baseFontSize, ayahs, tajweedMode, tajweedAyahs]);
-
-  useEffect(() => {
-    const container = containerRef.current;
-    const text = textRef.current;
-    if (!container || !text) return;
-
-    let raf = 0;
-    const fit = () => {
-      cancelAnimationFrame(raf);
-      raf = requestAnimationFrame(() => {
-        let size = baseFontSize;
-        text.style.fontSize = `${size}px`;
-        const minSize = 14;
-        // shrink until content fits container
-        let guard = 60;
-        while (text.scrollHeight > container.clientHeight && size > minSize && guard-- > 0) {
-          size -= 1;
-          text.style.fontSize = `${size}px`;
-        }
-        setEffective(size);
-      });
-    };
-    fit();
-    const ro = new ResizeObserver(fit);
-    ro.observe(container);
-    return () => {
-      cancelAnimationFrame(raf);
-      ro.disconnect();
-    };
-  }, [baseFontSize, ayahs, tajweedMode, tajweedAyahs]);
-
   return (
-    <div ref={containerRef} className="relative flex h-full flex-col">
+    <div className="relative flex h-full flex-col">
       {showBismillah && (
         <p
           className="font-quran mb-3 text-center"
-          style={{ fontSize: effective * 1.05, color: "var(--gold)" }}
+          style={{ fontSize: fontSize * 1.05, color: "var(--gold)" }}
         >
           بِسْمِ اللَّهِ الرَّحْمَٰنِ الرَّحِيمِ
         </p>
       )}
       <div
-        ref={textRef}
         className="font-quran flex-1 overflow-hidden text-justify"
-        style={{ fontSize: effective, lineHeight: 2.0, color: "var(--mushaf-ink)", textAlignLast: "center" as any }}
+        style={{ fontSize, lineHeight: 2.0, color: "var(--mushaf-ink)", textAlignLast: "center" as any }}
       >
         {tajweedMode && tajweedLoading && (
           <span className="mb-2 inline-flex items-center gap-2 rounded-full border bg-card px-2 py-1 text-[10px] text-muted-foreground">
