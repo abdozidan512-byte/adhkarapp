@@ -209,6 +209,11 @@ function SurahReader() {
     return () => ro.disconnect();
   }, [ayahs, fontSize, meta.number, tajweedMode, tajweedAyahs]);
 
+  // Re-init embla whenever the page list changes (font size / viewport)
+  useEffect(() => {
+    if (!emblaApi) return;
+    emblaApi.reInit();
+  }, [emblaApi, pages.length]);
 
   // Jump to ?page= once carousel & ayahs are ready
   useEffect(() => {
