@@ -139,6 +139,12 @@ function SurahReader() {
     };
   }, [emblaApi]);
 
+  // Re-init embla whenever the page list changes (font size / viewport)
+  useEffect(() => {
+    if (!emblaApi) return;
+    emblaApi.reInit();
+  }, [emblaApi, pages.length]);
+
   // Stop audio on unmount
   useEffect(() => {
     return () => {
