@@ -147,24 +147,67 @@ function SurahReader() {
     };
   }, []);
 
-  // Group ayahs by real Mushaf page (so each swipe-page matches the printed page).
-  // If the API didn't provide page numbers, fall back to a fixed slice.
-  const pages: { numberInSurah: number; text: string; page?: number; juz?: number }[][] = (() => {
-    if (!ayahs) return [];
-    const hasPages = ayahs.every((a) => typeof a.page === "number");
-    if (!hasPages) {
-      return Array.from({ length: Math.ceil(ayahs.length / FALLBACK_PAGE_SIZE) }, (_, i) =>
-        ayahs.slice(i * FALLBACK_PAGE_SIZE, (i + 1) * FALLBACK_PAGE_SIZE)
-      );
-    }
-    const map = new Map<number, typeof ayahs>();
-    for (const a of ayahs) {
-      const p = a.page as number;
-      if (!map.has(p)) map.set(p, []);
-      map.get(p)!.push(a);
-    }
-    return Array.from(map.keys()).sort((a, b) => a - b).map((k) => map.get(k)!);
-  })();
+  // Dynamic pagination: measure how many ayahs fit on the current screen
+  // at the chosen font size, and split at full-ayah boundaries only.
+  const carouselRef = useRef<HTMLDivElement | null>(null);
+  const measureRef = useRef<HTMLDivElement | null>(null);
+  const [pages, setPages] = useState<{ numberInSurah: number; text: string; page?: number; juz?: number }[][]>([]);
+
+  useLayoutEffect(() => {
+    if (!ayahs) return;
+    const carousel = carouselRef.current;
+    const measurer = measureRef.current;
+    if (!carousel || !measurer) return;
+
+    const showBismillah = meta.number !== 1 && meta.number !== 9;
+
+    const compute = () => {
+      const totalH = carousel.clientHeight;
+      // .mushaf-page padding p-4 = 16px each side -> 32 vertical
+      const PADDING_Y = 32;
+      const baseAvail = Math.max(0, totalH - PADDING_Y);
+      // approximate bismillah height for first page
+      const bismillahH = showBismillah ? fontSize * 1.05 * 1.4 + 12 : 0;
+
+      const result: typeof ayahs[] = [];
+      let i = 0;
+      while (i < ayahs.length) {
+        const isFirst = result.length === 0;
+        const avail = baseAvail - (isFirst ? bismillahH : 0);
+        measurer.innerHTML = "";
+        let lastFitIdx = i - 1;
+        for (let j = i; j < ayahs.length; j++) {
+          const span = document.createElement("span");
+          // mirror the rendering: text + ornament circle + space
+          const safeText = ayahs[j].text;
+          span.innerHTML =
+            safeText.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]!)) +
+            `<span class="ayah-ornament tabular-nums">${ayahs[j].numberInSurah}</span> `;
+          measurer.appendChild(span);
+          if (measurer.scrollHeight > avail) {
+            if (j === i) {
+              // single ayah taller than the page: include it alone, advance
+              lastFitIdx = j;
+            } else {
+              measurer.removeChild(span);
+            }
+            break;
+          }
+          lastFitIdx = j;
+        }
+        const next = lastFitIdx + 1;
+        result.push(ayahs.slice(i, next));
+        i = next;
+      }
+      setPages(result);
+    };
+
+    compute();
+    const ro = new ResizeObserver(compute);
+    ro.observe(carousel);
+    return () => ro.disconnect();
+  }, [ayahs, fontSize, meta.number, tajweedMode, tajweedAyahs]);
+
 
   // Jump to ?page= once carousel & ayahs are ready
   useEffect(() => {
