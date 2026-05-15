@@ -161,42 +161,51 @@ function SurahReader() {
     if (!carousel || !measurer) return;
 
     const showBismillah = meta.number !== 1 && meta.number !== 9;
+    const escape = (s: string) =>
+      s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]!));
 
     const compute = () => {
       const totalH = carousel.clientHeight;
       // .mushaf-page padding p-4 = 16px each side -> 32 vertical
       const PADDING_Y = 32;
-      const baseAvail = Math.max(0, totalH - PADDING_Y);
-      // approximate bismillah height for first page
-      const bismillahH = showBismillah ? fontSize * 1.05 * 1.4 + 12 : 0;
+      const targetH = Math.max(0, totalH - PADDING_Y);
+      // Tolerance (px): allow filling right up to the limit instead of leaving
+      // a partial-line gap due to sub-pixel rounding.
+      const TOL = 1;
+
+      const bismillahHTML =
+        `<div style="font-size:${fontSize * 1.05}px;line-height:1.4;text-align:center;margin-bottom:12px;">بِسْمِ اللَّهِ الرَّحْمَٰنِ الرَّحِيمِ</div>`;
 
       const result: typeof ayahs[] = [];
       let i = 0;
       while (i < ayahs.length) {
         const isFirst = result.length === 0;
-        const avail = baseAvail - (isFirst ? bismillahH : 0);
-        measurer.innerHTML = "";
+        // Build measurer to mirror MushafPage exactly (bismillah + flex text area)
+        measurer.innerHTML =
+          (isFirst && showBismillah ? bismillahHTML : "") +
+          `<div class="font-quran" data-text style="font-size:${fontSize}px;line-height:2.0;text-align:justify;text-align-last:center;"></div>`;
+        const textEl = measurer.querySelector<HTMLDivElement>("[data-text]")!;
+
         let lastFitIdx = i - 1;
         for (let j = i; j < ayahs.length; j++) {
           const span = document.createElement("span");
-          // mirror the rendering: text + ornament circle + space
-          const safeText = ayahs[j].text;
           span.innerHTML =
-            safeText.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]!)) +
+            escape(ayahs[j].text) +
             `<span class="ayah-ornament tabular-nums">${ayahs[j].numberInSurah}</span> `;
-          measurer.appendChild(span);
-          if (measurer.scrollHeight > avail) {
+          textEl.appendChild(span);
+          if (measurer.scrollHeight > targetH + TOL) {
             if (j === i) {
-              // single ayah taller than the page: include it alone, advance
+              // single ayah taller than the page — include it alone
               lastFitIdx = j;
             } else {
-              measurer.removeChild(span);
+              textEl.removeChild(span);
             }
             break;
           }
           lastFitIdx = j;
         }
         const next = lastFitIdx + 1;
+        if (next === i) break; // safety
         result.push(ayahs.slice(i, next));
         i = next;
       }
