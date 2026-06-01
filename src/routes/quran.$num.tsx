@@ -170,51 +170,75 @@ function SurahReader() {
     const showBismillah = meta.number !== 1 && meta.number !== 9;
     const escape = (s: string) =>
       s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]!));
+    const visualText = (ayah: QuranAyah) => {
+      const tajweedText = tajweedMode ? tajweedAyahs?.find((t) => t.numberInSurah === ayah.numberInSurah)?.text : undefined;
+      return tajweedText ? stripTajweedMarks(tajweedText) : ayah.text;
+    };
 
     const compute = () => {
-      const totalH = carousel.clientHeight;
-      // .mushaf-page padding p-4 = 16px each side -> 32 vertical
-      const PADDING_Y = 32;
-      const targetH = Math.max(0, totalH - PADDING_Y);
-      // Tolerance (px): allow filling right up to the limit instead of leaving
-      // a partial-line gap due to sub-pixel rounding.
-      const TOL = 1;
+      const PADDING_Y = 16;
+      const targetH = Math.max(0, carousel.clientHeight - PADDING_Y);
+      const TOL = 2;
+      const layoutFontSize = fontSize > 30 ? 30 + (fontSize - 30) * 0.45 : fontSize;
+      const compactLineHeight = fontSize >= 42 ? 1.36 : fontSize >= 34 ? 1.44 : 1.52;
+      const relaxedLineHeight = fontSize >= 42 ? 1.62 : fontSize >= 34 ? 1.72 : 1.9;
 
-      const bismillahHTML =
-        `<div style="font-size:${fontSize * 1.05}px;line-height:1.4;text-align:center;margin-bottom:12px;">بِسْمِ اللَّهِ الرَّحْمَٰنِ الرَّحِيمِ</div>`;
+      const ayahHTML = (ayah: QuranAyah) =>
+        `${escape(visualText(ayah))}<span class="ayah-ornament tabular-nums">${ayah.numberInSurah}</span> `;
 
-      const result: typeof ayahs[] = [];
+      const measure = (list: QuranAyah[], size: number, lineHeight: number, firstPage: boolean) => {
+        const bismillahHTML = firstPage && showBismillah
+          ? `<div class="font-quran" style="font-size:${size * 1.02}px;line-height:1.3;text-align:center;margin-bottom:6px;color:var(--gold);">بِسْمِ اللَّهِ الرَّحْمَٰنِ الرَّحِيمِ</div>`
+          : "";
+        measurer.innerHTML =
+          bismillahHTML +
+          `<div class="font-quran" style="font-size:${size}px;line-height:${lineHeight};text-align:justify;text-align-last:center;color:var(--mushaf-ink);">${list.map(ayahHTML).join("")}</div>`;
+        return measurer.scrollHeight;
+      };
+
+      const fitFontSize = (list: QuranAyah[], firstPage: boolean) => {
+        if (measure(list, fontSize, compactLineHeight, firstPage) <= targetH + TOL) return fontSize;
+        let low = Math.max(18, Math.min(layoutFontSize, fontSize));
+        let high = fontSize;
+        for (let k = 0; k < 8; k++) {
+          const mid = (low + high) / 2;
+          if (measure(list, mid, compactLineHeight, firstPage) <= targetH + TOL) low = mid;
+          else high = mid;
+        }
+        return low;
+      };
+
+      const fitLineHeight = (list: QuranAyah[], size: number, firstPage: boolean) => {
+        if (measure(list, size, relaxedLineHeight, firstPage) <= targetH + TOL) return relaxedLineHeight;
+        let low = compactLineHeight;
+        let high = relaxedLineHeight;
+        for (let k = 0; k < 8; k++) {
+          const mid = (low + high) / 2;
+          if (measure(list, size, mid, firstPage) <= targetH + TOL) low = mid;
+          else high = mid;
+        }
+        return low;
+      };
+
+      const result: QuranPage[] = [];
       let i = 0;
       while (i < ayahs.length) {
-        const isFirst = result.length === 0;
-        // Build measurer to mirror MushafPage exactly (bismillah + flex text area)
-        measurer.innerHTML =
-          (isFirst && showBismillah ? bismillahHTML : "") +
-          `<div class="font-quran" data-text style="font-size:${fontSize}px;line-height:2.0;text-align:justify;text-align-last:center;"></div>`;
-        const textEl = measurer.querySelector<HTMLDivElement>("[data-text]")!;
-
-        let lastFitIdx = i - 1;
+        const firstPage = result.length === 0;
+        let lastFitIdx = i;
         for (let j = i; j < ayahs.length; j++) {
-          const span = document.createElement("span");
-          span.innerHTML =
-            escape(ayahs[j].text) +
-            `<span class="ayah-ornament tabular-nums">${ayahs[j].numberInSurah}</span> `;
-          textEl.appendChild(span);
-          if (measurer.scrollHeight > targetH + TOL) {
-            if (j === i) {
-              // single ayah taller than the page — include it alone
-              lastFitIdx = j;
-            } else {
-              textEl.removeChild(span);
-            }
+          const candidate = ayahs.slice(i, j + 1);
+          if (measure(candidate, layoutFontSize, compactLineHeight, firstPage) <= targetH + TOL || j === i) {
+            lastFitIdx = j;
+          } else {
             break;
           }
-          lastFitIdx = j;
         }
-        const next = lastFitIdx + 1;
-        if (next === i) break; // safety
-        result.push(ayahs.slice(i, next));
-        i = next;
+
+        const pageAyahs = ayahs.slice(i, lastFitIdx + 1);
+        const pageFontSize = fitFontSize(pageAyahs, firstPage);
+        const pageLineHeight = fitLineHeight(pageAyahs, pageFontSize, firstPage);
+        result.push({ ayahs: pageAyahs, fontSize: pageFontSize, lineHeight: pageLineHeight });
+        i = lastFitIdx + 1;
       }
       setPages(result);
     };
