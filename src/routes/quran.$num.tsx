@@ -599,9 +599,9 @@ function SurahReader() {
           className="font-quran pointer-events-none invisible absolute left-0 top-0 text-justify"
           style={{
             fontSize: fontSize,
-            lineHeight: 2.0,
-            width: "calc(100% - 32px)",
-            margin: 16,
+            lineHeight: 1.52,
+            width: "calc(100% - 16px)",
+            margin: 8,
             textAlignLast: "center" as any,
             whiteSpace: "normal",
           }}
@@ -843,6 +843,7 @@ function SurahReader() {
 type MushafPageProps = {
   ayahs: { numberInSurah: number; text: string; page?: number; juz?: number }[];
   fontSize: number;
+  lineHeight: number;
   showBismillah: boolean;
   tajweedMode: boolean;
   tajweedAyahs: TajweedAyah[] | null;
@@ -855,6 +856,7 @@ type MushafPageProps = {
 function MushafPage({
   ayahs,
   fontSize,
+  lineHeight,
   showBismillah,
   tajweedMode,
   tajweedAyahs,
@@ -867,15 +869,15 @@ function MushafPage({
     <div className="relative flex h-full flex-col">
       {showBismillah && (
         <p
-          className="font-quran mb-3 text-center"
-          style={{ fontSize: fontSize * 1.05, color: "var(--gold)" }}
+          className="font-quran mb-1.5 text-center"
+          style={{ fontSize: fontSize * 1.02, lineHeight: 1.3, color: "var(--gold)" }}
         >
           بِسْمِ اللَّهِ الرَّحْمَٰنِ الرَّحِيمِ
         </p>
       )}
       <div
         className="font-quran flex-1 overflow-hidden text-justify"
-        style={{ fontSize, lineHeight: 2.0, color: "var(--mushaf-ink)", textAlignLast: "center" as any }}
+        style={{ fontSize, lineHeight, color: "var(--mushaf-ink)", textAlignLast: "center" as any }}
       >
         {tajweedMode && tajweedLoading && (
           <span className="mb-2 inline-flex items-center gap-2 rounded-full border bg-card px-2 py-1 text-[10px] text-muted-foreground">
