@@ -470,14 +470,16 @@ function SurahReader() {
               <span>تجويد</span>
             </button>
             <button
-              onClick={() => setFontSize((s) => Math.max(18, s - 2))}
-              className="flex h-9 w-9 items-center justify-center rounded-full bg-white/15 text-primary-foreground"
+              onClick={() => setFontSize((s) => Math.max(24, s - 2))}
+              disabled={fontSize <= 24}
+              className="flex h-9 w-9 items-center justify-center rounded-full bg-white/15 text-primary-foreground disabled:opacity-40"
             >
               <ZoomOut className="h-4 w-4" />
             </button>
             <button
-              onClick={() => setFontSize((s) => Math.min(48, s + 2))}
-              className="flex h-9 w-9 items-center justify-center rounded-full bg-white/15 text-primary-foreground"
+              onClick={() => setFontSize((s) => Math.min(32, s + 2))}
+              disabled={fontSize >= 32}
+              className="flex h-9 w-9 items-center justify-center rounded-full bg-white/15 text-primary-foreground disabled:opacity-40"
             >
               <ZoomIn className="h-4 w-4" />
             </button>
