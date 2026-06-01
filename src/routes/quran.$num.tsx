@@ -265,7 +265,7 @@ function SurahReader() {
   // Persist reading progress whenever the page changes
   useEffect(() => {
     if (!ayahs || pages.length === 0) return;
-    const currentPage = pages[page];
+    const currentPage = pages[page]?.ayahs;
     if (!currentPage || currentPage.length === 0) return;
     saveReadingProgress({
       surahNumber: meta.number,
@@ -446,8 +446,8 @@ function SurahReader() {
 
   const showBismillah = meta.number !== 1 && meta.number !== 9;
 
-  const currentMushafPage = pages[page]?.[0]?.page;
-  const currentJuz = pages[page]?.[0]?.juz;
+  const currentMushafPage = pages[page]?.ayahs[0]?.page;
+  const currentJuz = pages[page]?.ayahs[0]?.juz;
 
   return (
     <div className="fixed inset-0 z-40 flex flex-col" style={{ background: "var(--mushaf-paper)", paddingTop: "env(safe-area-inset-top)", paddingBottom: "env(safe-area-inset-bottom)" }}>
@@ -572,12 +572,13 @@ function SurahReader() {
           {pages.map((pg, idx) => (
             <div key={idx} className="h-full min-w-0 shrink-0 grow-0 basis-full">
               <div
-                className="mushaf-page relative h-full overflow-hidden p-4"
+                className="mushaf-page relative h-full overflow-hidden p-2"
                 onClick={() => setChromeVisible((v) => !v)}
               >
                 <MushafPage
-                  ayahs={pg}
-                  fontSize={fontSize}
+                  ayahs={pg.ayahs}
+                  fontSize={pg.fontSize}
+                  lineHeight={pg.lineHeight}
                   showBismillah={idx === 0 && showBismillah}
                   tajweedMode={tajweedMode}
                   tajweedAyahs={tajweedAyahs}
