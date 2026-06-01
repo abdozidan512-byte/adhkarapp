@@ -43,13 +43,20 @@ export const Route = createFileRoute("/quran/$num")({
   }),
 });
 
-const FALLBACK_PAGE_SIZE = 5; // used only if API didn't return Mushaf page numbers
+type QuranAyah = { numberInSurah: number; text: string; page?: number; juz?: number };
+type QuranPage = { ayahs: QuranAyah[]; lineHeight: number; fontSize: number };
+
+const TAJWEED_MARK_RE = /\[[a-z](?::\d+)?\[([^\]]*)\]/g;
+
+function stripTajweedMarks(text: string) {
+  return text.replace(TAJWEED_MARK_RE, "$1").replace(/\]/g, "");
+}
 
 function SurahReader() {
   const meta = Route.useLoaderData();
   const search = Route.useSearch();
-  const [ayahs, setAyahs] = useState<{ numberInSurah: number; text: string; page?: number; juz?: number }[] | null>(null);
-  const [chromeVisible, setChromeVisible] = useState(true);
+  const [ayahs, setAyahs] = useState<QuranAyah[] | null>(null);
+  const [chromeVisible, setChromeVisible] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [fontSize, setFontSize] = useState(28);
   const [reciter, setReciter] = useState<ReciterId>("ar.yasser");
@@ -152,7 +159,7 @@ function SurahReader() {
   // at the chosen font size, and split at full-ayah boundaries only.
   const carouselRef = useRef<HTMLDivElement | null>(null);
   const measureRef = useRef<HTMLDivElement | null>(null);
-  const [pages, setPages] = useState<{ numberInSurah: number; text: string; page?: number; juz?: number }[][]>([]);
+  const [pages, setPages] = useState<QuranPage[]>([]);
 
   useLayoutEffect(() => {
     if (!ayahs) return;
