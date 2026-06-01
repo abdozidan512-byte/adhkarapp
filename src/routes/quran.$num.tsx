@@ -179,9 +179,11 @@ function SurahReader() {
       const PADDING_Y = 16;
       const targetH = Math.max(0, carousel.clientHeight - PADDING_Y);
       const TOL = 2;
-      const layoutFontSize = fontSize > 30 ? 30 + (fontSize - 30) * 0.45 : fontSize;
-      const compactLineHeight = fontSize >= 42 ? 1.36 : fontSize >= 34 ? 1.44 : 1.52;
-      const relaxedLineHeight = fontSize >= 42 ? 1.62 : fontSize >= 34 ? 1.72 : 1.9;
+      // Pagination is intentionally steadier than the visible zoom: large font
+      // sizes should not push ayahs to new pages too aggressively.
+      const layoutFontSize = Math.min(fontSize, 30);
+      const compactLineHeight = fontSize >= 42 ? 1.28 : fontSize >= 34 ? 1.36 : 1.48;
+      const relaxedLineHeight = fontSize >= 42 ? 1.86 : fontSize >= 34 ? 2.0 : 2.18;
 
       const ayahHTML = (ayah: QuranAyah) =>
         `${escape(visualText(ayah))}<span class="ayah-ornament tabular-nums">${ayah.numberInSurah}</span> `;
