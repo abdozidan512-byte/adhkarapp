@@ -175,80 +175,63 @@ function SurahReader() {
       return tajweedText ? stripTajweedMarks(tajweedText) : ayah.text;
     };
 
+    let rafId = 0;
+    let lastH = 0;
+
     const compute = () => {
       const PADDING_Y = 16;
       const targetH = Math.max(0, carousel.clientHeight - PADDING_Y);
       const TOL = 2;
-      // Pagination is intentionally steadier than the visible zoom: large font
-      // sizes should not push ayahs to new pages too aggressively.
-      const layoutFontSize = Math.min(fontSize, 30);
-      const compactLineHeight = fontSize >= 42 ? 1.28 : fontSize >= 34 ? 1.36 : 1.48;
-      const relaxedLineHeight = fontSize >= 42 ? 1.86 : fontSize >= 34 ? 2.0 : 2.18;
+      const lineHeight = fontSize >= 30 ? 1.9 : 2.05;
 
       const ayahHTML = (ayah: QuranAyah) =>
         `${escape(visualText(ayah))}<span class="ayah-ornament tabular-nums">${ayah.numberInSurah}</span> `;
 
-      const measure = (list: QuranAyah[], size: number, lineHeight: number, firstPage: boolean) => {
-        const bismillahHTML = firstPage && showBismillah
-          ? `<div class="font-quran" style="font-size:${size * 1.02}px;line-height:1.3;text-align:center;margin-bottom:6px;color:var(--gold);">بِسْمِ اللَّهِ الرَّحْمَٰنِ الرَّحِيمِ</div>`
+      const bismillahHTML = (firstPage: boolean) =>
+        firstPage && showBismillah
+          ? `<div class="font-quran" style="font-size:${fontSize * 1.02}px;line-height:1.3;text-align:center;margin-bottom:6px;color:var(--gold);">بِسْمِ اللَّهِ الرَّحْمَٰنِ الرَّحِيمِ</div>`
           : "";
-        measurer.innerHTML =
-          bismillahHTML +
-          `<div class="font-quran" style="font-size:${size}px;line-height:${lineHeight};text-align:justify;text-align-last:center;color:var(--mushaf-ink);">${list.map(ayahHTML).join("")}</div>`;
-        return measurer.scrollHeight;
-      };
-
-      const fitFontSize = (list: QuranAyah[], firstPage: boolean) => {
-        if (measure(list, fontSize, compactLineHeight, firstPage) <= targetH + TOL) return fontSize;
-        let low = Math.max(18, Math.min(layoutFontSize, fontSize));
-        let high = fontSize;
-        for (let k = 0; k < 8; k++) {
-          const mid = (low + high) / 2;
-          if (measure(list, mid, compactLineHeight, firstPage) <= targetH + TOL) low = mid;
-          else high = mid;
-        }
-        return low;
-      };
-
-      const fitLineHeight = (list: QuranAyah[], size: number, firstPage: boolean) => {
-        if (measure(list, size, relaxedLineHeight, firstPage) <= targetH + TOL) return relaxedLineHeight;
-        let low = compactLineHeight;
-        let high = relaxedLineHeight;
-        for (let k = 0; k < 8; k++) {
-          const mid = (low + high) / 2;
-          if (measure(list, size, mid, firstPage) <= targetH + TOL) low = mid;
-          else high = mid;
-        }
-        return low;
-      };
 
       const result: QuranPage[] = [];
       let i = 0;
       while (i < ayahs.length) {
         const firstPage = result.length === 0;
+        const prefix = bismillahHTML(firstPage) +
+          `<div class="font-quran" style="font-size:${fontSize}px;line-height:${lineHeight};text-align:justify;text-align-last:center;color:var(--mushaf-ink);">`;
         let lastFitIdx = i;
+        let accumulated = "";
         for (let j = i; j < ayahs.length; j++) {
-          const candidate = ayahs.slice(i, j + 1);
-          if (measure(candidate, layoutFontSize, compactLineHeight, firstPage) <= targetH + TOL || j === i) {
+          accumulated += ayahHTML(ayahs[j]);
+          measurer.innerHTML = prefix + accumulated + "</div>";
+          if (measurer.scrollHeight <= targetH + TOL || j === i) {
             lastFitIdx = j;
           } else {
             break;
           }
         }
-
-        const pageAyahs = ayahs.slice(i, lastFitIdx + 1);
-        const pageFontSize = fitFontSize(pageAyahs, firstPage);
-        const pageLineHeight = fitLineHeight(pageAyahs, pageFontSize, firstPage);
-        result.push({ ayahs: pageAyahs, fontSize: pageFontSize, lineHeight: pageLineHeight });
+        result.push({ ayahs: ayahs.slice(i, lastFitIdx + 1), fontSize, lineHeight });
         i = lastFitIdx + 1;
       }
       setPages(result);
     };
 
-    compute();
-    const ro = new ResizeObserver(compute);
+    const schedule = () => {
+      cancelAnimationFrame(rafId);
+      rafId = requestAnimationFrame(compute);
+    };
+
+    schedule();
+    const ro = new ResizeObserver(() => {
+      const h = carousel.clientHeight;
+      if (Math.abs(h - lastH) < 4) return;
+      lastH = h;
+      schedule();
+    });
     ro.observe(carousel);
-    return () => ro.disconnect();
+    return () => {
+      cancelAnimationFrame(rafId);
+      ro.disconnect();
+    };
   }, [ayahs, fontSize, meta.number, tajweedMode, tajweedAyahs]);
 
   // Re-init embla whenever the page list changes (font size / viewport)
@@ -487,14 +470,16 @@ function SurahReader() {
               <span>تجويد</span>
             </button>
             <button
-              onClick={() => setFontSize((s) => Math.max(18, s - 2))}
-              className="flex h-9 w-9 items-center justify-center rounded-full bg-white/15 text-primary-foreground"
+              onClick={() => setFontSize((s) => Math.max(24, s - 2))}
+              disabled={fontSize <= 24}
+              className="flex h-9 w-9 items-center justify-center rounded-full bg-white/15 text-primary-foreground disabled:opacity-40"
             >
               <ZoomOut className="h-4 w-4" />
             </button>
             <button
-              onClick={() => setFontSize((s) => Math.min(48, s + 2))}
-              className="flex h-9 w-9 items-center justify-center rounded-full bg-white/15 text-primary-foreground"
+              onClick={() => setFontSize((s) => Math.min(32, s + 2))}
+              disabled={fontSize >= 32}
+              className="flex h-9 w-9 items-center justify-center rounded-full bg-white/15 text-primary-foreground disabled:opacity-40"
             >
               <ZoomIn className="h-4 w-4" />
             </button>
