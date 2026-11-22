@@ -47,6 +47,31 @@ export const Route = createFileRoute("/quran/$num")({
 type QuranAyah = { numberInSurah: number; text: string; page?: number; juz?: number };
 type QuranPage = { ayahs: QuranAyah[]; mushafPage: number };
 
+async function downloadConcurrently<T>(
+  items: T[],
+  concurrency: number,
+  action: (item: T) => Promise<unknown>,
+  onProgress: (completed: number) => void,
+): Promise<unknown[]> {
+  let nextIndex = 0;
+  let completed = 0;
+  const failures: unknown[] = [];
+  const worker = async () => {
+    while (nextIndex < items.length) {
+      const item = items[nextIndex++];
+      try {
+        await action(item);
+      } catch (error) {
+        failures.push(error);
+      }
+      completed++;
+      onProgress(completed);
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(concurrency, items.length) }, () => worker()));
+  return failures;
+}
+
 function SurahReader() {
   const meta = Route.useLoaderData();
   const search = Route.useSearch();
@@ -55,6 +80,7 @@ function SurahReader() {
   const [reciter, setReciter] = useState<ReciterId>("ar.yasser");
   const [playing, setPlaying] = useState<number | null>(null);
   const [downloading, setDownloading] = useState<{ ayah: number | "all"; pct: number } | null>(null);
+  const [downloadMessage, setDownloadMessage] = useState<{ kind: "success" | "error"; text: string } | null>(null);
   const [showReciterSheet, setShowReciterSheet] = useState(false);
   const [tajweedMode, setTajweedMode] = useState(false);
   const [showLegend, setShowLegend] = useState(false);
@@ -202,17 +228,23 @@ function SurahReader() {
         if (!active) return;
         objectUrl = URL.createObjectURL(blob);
         setPageImageSrc(objectUrl);
+
+        // Warm the nearby page cache after the visible page is ready so
+        // the next swipe reads from IndexedDB instead of waiting on the network.
+        const nearbyPages = [...new Set([
+          pages[page - 1]?.mushafPage,
+          pages[page + 1]?.mushafPage,
+          pages[page + 2]?.mushafPage,
+        ].filter((value): value is number => typeof value === "number"))];
+        for (const adjacent of nearbyPages) {
+          const image = new Image();
+          image.src = getMushafPageImageUrl(adjacent, mode);
+          void downloadMushafPage(adjacent, mode).catch(() => undefined);
+        }
       })
       .catch(() => {
         if (active) setPageImageError(true);
       });
-
-    for (const adjacent of [pages[page - 1]?.mushafPage, pages[page + 1]?.mushafPage]) {
-      if (adjacent) {
-        const image = new Image();
-        image.src = getMushafPageImageUrl(adjacent, mode);
-      }
-    }
     return () => {
       active = false;
       if (objectUrl) URL.revokeObjectURL(objectUrl);
@@ -467,21 +499,102 @@ function SurahReader() {
   }
 
   async function downloadAll() {
-    if (!ayahs) return;
+    if (!ayahs || !pages.length || downloading !== null) return;
+    setDownloadMessage(null);
     setDownloading({ ayah: "all", pct: 0 });
-    try {
-      if (getFullSurahAudioUrl(reciter, meta.number)) {
-        await downloadFullSurah(reciter, meta.number, (pct) => setDownloading({ ayah: "all", pct }));
-        cachedAudioKeysRef.current.add(audioKey(reciter, meta.number));
-      } else {
-        for (let i = 0; i < ayahs.length; i++) {
-          const a = ayahs[i].numberInSurah;
-          await downloadAyahAudio(reciter, meta.number, a);
-          setDownloading({ ayah: "all", pct: Math.round(((i + 1) / ayahs.length) * 100) });
+
+    const pageNumbers = [...new Set(pages.map((item) => item.mushafPage))];
+    const pageTasks = (["tajweed", "clear"] as const).flatMap((mode) =>
+      pageNumbers.map((pageNumber) => ({ pageNumber, mode }))
+    );
+    let audioProgress = 0;
+    let pagesProgress = 0;
+    let lastProgress = -1;
+    const updateProgress = () => {
+      const pct = Math.round(audioProgress * 0.7 + pagesProgress * 0.3);
+      if (pct === lastProgress) return;
+      lastProgress = pct;
+      setDownloading({ ayah: "all", pct });
+    };
+
+    const downloadAudio = async () => {
+      const fullSurahUrl = getFullSurahAudioUrl(reciter, meta.number);
+      if (fullSurahUrl) {
+        try {
+          await downloadFullSurah(reciter, meta.number, (pct) => {
+            audioProgress = pct;
+            updateProgress();
+          });
+          cachedAudioKeysRef.current.add(audioKey(reciter, meta.number));
+          audioProgress = 100;
+          updateProgress();
+          return;
+        } catch (fullSurahError) {
+          console.warn("Full-surah download failed; trying ayah audio files.", fullSurahError);
         }
       }
-    } catch (e) {
-      console.error(e);
+
+      const firstAyah = ayahs[0]?.numberInSurah;
+      if (firstAyah === undefined || !getAyahAudioUrl(reciter, meta.number, firstAyah)) {
+        throw new Error("لا تتوفر ملفات صوتية لهذا القارئ والسورة.");
+      }
+      const ayahFailures = await downloadConcurrently(
+        ayahs,
+        3,
+        (ayah) => downloadAyahAudio(reciter, meta.number, ayah.numberInSurah),
+        (completed) => {
+          audioProgress = Math.round((completed / ayahs.length) * 100);
+          updateProgress();
+        },
+      );
+      if (ayahFailures.length) {
+        throw new Error(`تعذّر تنزيل ${ayahFailures.length} من آيات السورة صوتيًا.`);
+      }
+      audioProgress = 100;
+      updateProgress();
+    };
+
+    const downloadPages = async () => {
+      const pageFailures = await downloadConcurrently(
+        pageTasks,
+        3,
+        ({ pageNumber, mode }) => downloadMushafPage(pageNumber, mode),
+        (completed) => {
+          pagesProgress = Math.round((completed / pageTasks.length) * 100);
+          updateProgress();
+        },
+      );
+      if (pageFailures.length) {
+        throw new Error(`تعذّر تنزيل ${pageFailures.length} من صور الصفحات.`);
+      }
+      pagesProgress = 100;
+      updateProgress();
+    };
+
+    try {
+      const [audioResult, pagesResult] = await Promise.allSettled([downloadAudio(), downloadPages()]);
+      const audioSaved = audioResult.status === "fulfilled";
+      const pagesSaved = pagesResult.status === "fulfilled";
+      if (audioSaved && pagesSaved) {
+        setDownloadMessage({
+          kind: "success",
+          text: `تم حفظ تلاوة ${reciters.find((item) => item.id === reciter)?.name ?? "القارئ"} وصفحات سورة ${meta.name} بنوعي العرض دون إنترنت.`,
+        });
+      } else {
+        const missing = [
+          !audioSaved ? "صوت القارئ" : "",
+          !pagesSaved ? "صور صفحات السورة" : "",
+        ].filter(Boolean).join(" و");
+        const reason = !audioSaved && audioResult.status === "rejected"
+          ? String(audioResult.reason?.message ?? "")
+          : !pagesSaved && pagesResult.status === "rejected"
+            ? String(pagesResult.reason?.message ?? "")
+            : "";
+        setDownloadMessage({
+          kind: "error",
+          text: `اكتمل التنزيل جزئيًا؛ تعذّر حفظ ${missing}.${reason ? ` ${reason}` : " تحقق من الاتصال وأعد المحاولة."}`,
+        });
+      }
     } finally {
       setDownloading(null);
     }
@@ -556,7 +669,7 @@ function SurahReader() {
             onClick={downloadAll}
             disabled={downloading !== null}
             className="flex h-8 w-8 items-center justify-center rounded-full border bg-card disabled:opacity-50"
-            aria-label="تحميل السورة"
+            aria-label="تحميل تلاوة القارئ وصفحات السورة"
           >
             {downloading?.ayah === "all" ? (
               <span className="text-[9px] font-bold">{downloading.pct}%</span>
@@ -568,6 +681,12 @@ function SurahReader() {
             <BookOpen className="h-4 w-4" />
           </button>
         </div>
+      {downloadMessage && (
+        <div role={downloadMessage.kind === "error" ? "alert" : "status"} className={cn("mx-3 mt-2 rounded-xl border px-3 py-2 text-xs font-bold", downloadMessage.kind === "error" ? "border-destructive/30 bg-destructive/10 text-destructive" : "border-emerald-500/30 bg-emerald-500/10 text-emerald-700")}>
+          {downloadMessage.text}
+          <button onClick={() => setDownloadMessage(null)} className="mr-2 underline">إخفاء</button>
+        </div>
+      )}
       {audioError && <div role="alert" className="relative z-30 mx-3 mt-2 rounded-xl border border-destructive/30 bg-destructive/10 px-3 py-2 text-xs font-bold text-destructive">{audioError}</div>}
 
       {/* The Mushaf page stays in its own reading area between the controls and footer. */}
