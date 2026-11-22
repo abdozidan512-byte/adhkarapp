@@ -8,6 +8,7 @@ import { fetchSurahTafsir, tafsirEditions, type TafsirAyah } from "@/lib/tafsir"
 import {
   fetchSurahText,
   getAyahAudioUrl,
+  downloadAyahAudio,
   getAyahAudioBlob,
   getReciter,
   getFullSurahAudioUrl,
@@ -43,12 +44,6 @@ export const Route = createFileRoute("/quran/$num")({
 
 type QuranAyah = { numberInSurah: number; text: string; page?: number; juz?: number };
 type QuranPage = { ayahs: QuranAyah[]; mushafPage: number };
-
-const TAJWEED_MARK_RE = /\[[a-z](?::\d+)?\[([^\]]*)\]/g;
-
-function stripTajweedMarks(text: string) {
-  return text.replace(TAJWEED_MARK_RE, "$1").replace(/\]/g, "");
-}
 
 function getMushafPageImageUrl(page: number, tajweed: boolean) {
   const collection = tajweed ? "ayat/tajweed" : "kfgqpc/hafs-wasat";
@@ -335,8 +330,6 @@ function SurahReader() {
     );
   }
 
-  const showBismillah = meta.number !== 1 && meta.number !== 9;
-
   const currentMushafPage = pages[page]?.mushafPage;
   const currentJuz = pages[page]?.ayahs[0]?.juz;
 
@@ -410,6 +403,7 @@ function SurahReader() {
               style={{ background: "var(--gradient-primary)", color: "var(--primary-foreground)" }}
             >
               <Play className="h-3.5 w-3.5" /> تلاوة
+            </button>
           ) : (
             <button
               onClick={stopPlay}
