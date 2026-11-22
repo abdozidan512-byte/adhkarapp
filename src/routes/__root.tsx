@@ -81,7 +81,6 @@ function RootComponent() {
       const host = window.location.hostname;
       const isPreview =
         host.includes("id-preview--") ||
-        host.includes("lovableproject.com") ||
         host === "localhost" ||
         host === "127.0.0.1";
 
