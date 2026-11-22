@@ -286,7 +286,16 @@ function SurahReader() {
       }
     }
 
-    if (!blob || audioRef.current !== audio) {
+    if (audioRef.current !== audio) return;
+    if (!blob) {
+      // If the combined surah stream is unavailable, fall back to the
+      // reciter's ayah files when they are available.
+      const firstAyah = ayahs?.[0]?.numberInSurah;
+      if (ayah === undefined && firstAyah !== undefined && getAyahAudioUrl(reciter, meta.number, firstAyah)) {
+        playQueueRef.current = ayahs!.slice(1).map((item) => item.numberInSurah);
+        playAyah(firstAyah);
+        return;
+      }
       const code = audio.error?.code;
       setAudioError(code
         ? `تعذّر تشغيل التلاوة (رمز المشغّل ${code}). أعد المحاولة أو نزّل السورة أولًا.`
@@ -307,35 +316,49 @@ function SurahReader() {
     });
   }
 
-  function playAyah(ayah: number) {
+  function playAyah(ayah: number, existingAudio?: HTMLAudioElement) {
     const src = getAyahAudioUrl(reciter, meta.number, ayah);
     if (!src) {
       setAudioError("لا تتوفر تلاوة آية بآية لهذا القارئ؛ شغّل السورة كاملة.");
+      playQueueRef.current = [];
       playFullSurahFile();
       return;
     }
-    stopCurrentAudio();
+
+    const audio = existingAudio ?? new Audio();
+    if (existingAudio) {
+      audio.pause();
+      clearAudioObjectUrl();
+      audioFallbackRef.current = new WeakSet();
+    } else {
+      stopCurrentAudio();
+    }
+
     setAudioError(null);
     setPlaying(ayah);
-    const audio = new Audio(src);
     audio.preload = "auto";
-    audio.crossOrigin = "anonymous";
+    // Do not set crossOrigin here: several recitation hosts do not send CORS
+    // headers, and media playback itself does not need cross-origin access.
+    audio.removeAttribute("crossorigin");
+    audio.src = src;
+    audio.load();
     audioRef.current = audio;
     audio.onended = () => {
       clearAudioObjectUrl();
       const next = playQueueRef.current.shift();
       if (next !== undefined) {
-        playAyah(next);
+        playAyah(next, audio);
       } else if (repeatSelectedRef.current && selectedAyahsRef.current.length) {
         playQueueRef.current = selectedAyahsRef.current.slice(1);
-        playAyah(selectedAyahsRef.current[0]);
+        playAyah(selectedAyahsRef.current[0], audio);
       } else {
         audioRef.current = null;
         setPlaying(null);
       }
     };
     audio.onerror = () => void fallBackToCachedAudio(audio, ayah);
-    // Start inside the tap handler so Android WebView keeps the user's playback gesture.
+    // Keep one media element for the whole queue; Android WebView can reject
+    // a new Audio instance created later from an ended event.
     audio.play().catch((playError) => {
       console.error("Ayah playback failed", playError);
       void fallBackToCachedAudio(audio, ayah);
@@ -354,7 +377,8 @@ function SurahReader() {
     setPlaying(-1);
     const audio = new Audio(src);
     audio.preload = "auto";
-    audio.crossOrigin = "anonymous";
+    // Avoid CORS mode for remote media servers that do not expose CORS headers.
+    audio.removeAttribute("crossorigin");
     audioRef.current = audio;
     audio.onended = () => {
       clearAudioObjectUrl();
@@ -375,19 +399,10 @@ function SurahReader() {
   }
 
   function playFullSurah() {
-    const selectedReciter = reciters.find((item) => item.id === reciter);
-    const hasDownloadedSurah = cachedAudioKeysRef.current.has(audioKey(reciter, meta.number));
-    if (selectedReciter?.mode === "surah" || hasDownloadedSurah) {
-      playQueueRef.current = [];
-      playFullSurahFile();
-      return;
-    }
-    if (!ayahs) return;
-    const list = ayahs.map((a) => a.numberInSurah);
-    const first = list.shift();
-    if (first === undefined) return;
-    playQueueRef.current = list;
-    playAyah(first);
+    // Prefer one continuous audio file for a full-surah request. If that
+    // stream fails, fallBackToCachedAudio tries a local copy and then ayah files.
+    playQueueRef.current = [];
+    playFullSurahFile();
   }
 
   function playCurrentPage() {
@@ -595,7 +610,7 @@ function SurahReader() {
       </div>
       {audioError && <div role="alert" className="relative z-30 mx-3 mt-2 rounded-xl border border-destructive/30 bg-destructive/10 px-3 py-2 text-xs font-bold text-destructive">{audioError}</div>}
 
-      {/* Page canvas fills the display behind the fixed reader controls. */}
+      {{/* The Mushaf page stays in its own reading area between the controls and footer. */}}
       <div className="relative min-h-0 flex-1 overflow-hidden" ref={emblaRef}>
         <div className="flex h-full w-full">
           {pages.map((pg, idx) => (
