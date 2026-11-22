@@ -174,7 +174,7 @@ function SurahReader() {
     return grouped;
   }, [ayahs]);
 
-  // Re-init embla whenever the page list changes (font size / viewport)
+  // Re-init the page carousel whenever the surah page list changes
   useEffect(() => {
     if (!emblaApi) return;
     emblaApi.reInit();
@@ -482,7 +482,6 @@ function SurahReader() {
                 <MushafPage
                   ayahs={pg.ayahs}
                   fontSize={fontSize}
-                  lineHeight={1.65}
                   showBismillah={idx === 0 && showBismillah}
                   tajweedMode={tajweedMode}
                   tajweedAyahs={tajweedAyahs}
