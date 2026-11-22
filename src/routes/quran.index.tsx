@@ -248,7 +248,7 @@ function QuranIndex() {
             }}
           >
             <div className="mx-auto mb-4 h-1.5 w-12 rounded-full bg-muted" />
-            <h3 className="mb-1 text-lg font-extrabold">تحميل المصحف كاملاً</h3>
+            <h3 className="mb-1 text-lg font-extrabold">تنزيل أصوات القراء</h3>
             <p className="mb-4 text-xs text-muted-foreground">
               نزّل سور قارئ واحد أو اختر تنزيل أصوات القراء السبعة كاملة. تنزيل كل القراء قد يحتاج عدة غيغابايت؛ ابدأه على شبكة Wi-Fi وتأكد من المساحة.
             </p>
