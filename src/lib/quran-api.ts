@@ -1,4 +1,4 @@
-import { getSurah, saveSurah, saveAudio, getAudio } from "./db";
+import { getSurah, saveSurah, saveAudio, getAudio, getMushafPage, saveMushafPage } from "./db";
 import { reciters, type ReciterId } from "@/data/surahs";
 
 export type Ayah = { numberInSurah: number; text: string; page?: number; juz?: number };
@@ -128,7 +128,8 @@ export async function downloadAyahAudio(
 export async function downloadFullSurah(
   reciterId: ReciterId,
   surahNumber: number,
-  onProgress?: (pct: number) => void
+  onProgress?: (pct: number) => void,
+  signal?: AbortSignal,
 ): Promise<Blob> {
   const key = audioKey(reciterId, surahNumber);
   const cached = await getAudio(key);
@@ -138,7 +139,7 @@ export async function downloadFullSurah(
   }
   const url = getFullSurahAudioUrl(reciterId, surahNumber);
   if (!url) throw new Error("لا يوجد رابط لهذه السورة");
-  const res = await fetch(url);
+  const res = await fetch(url, { signal });
   if (!res.ok) throw new Error(`Failed: ${res.status}`);
   const reader = res.body?.getReader();
   const total = Number(res.headers.get("content-length") || 0);
@@ -173,4 +174,31 @@ export async function getFullSurahBlob(reciterId: ReciterId, surahNumber: number
   const key = audioKey(reciterId, surahNumber);
   const cached = await getAudio(key);
   return cached?.blob ?? null;
+}
+
+export type MushafPageMode = "tajweed" | "clear";
+
+export function getMushafPageImageUrl(page: number, mode: MushafPageMode = "tajweed") {
+  const collection = mode === "tajweed" ? "ayat/tajweed" : "kfgqpc/hafs-wasat";
+  const extension = mode === "tajweed" ? "png" : "jpg";
+  return `https://raw.githubusercontent.com/QuranHub/quran-pages-images/main/${collection}/${page}.${extension}`;
+}
+
+export async function downloadMushafPage(
+  page: number,
+  mode: MushafPageMode = "tajweed",
+  onProgress?: (pct: number) => void,
+  signal?: AbortSignal,
+): Promise<Blob> {
+  const cached = await getMushafPage(page, mode);
+  if (cached?.blob) {
+    onProgress?.(100);
+    return cached.blob;
+  }
+  const response = await fetch(getMushafPageImageUrl(page, mode), { signal });
+  if (!response.ok) throw new Error(`تعذّر تنزيل صفحة المصحف ${page}: ${response.status}`);
+  const blob = await response.blob();
+  await saveMushafPage(page, mode, blob);
+  onProgress?.(100);
+  return blob;
 }
