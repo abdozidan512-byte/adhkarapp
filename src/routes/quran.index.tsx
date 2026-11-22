@@ -1,11 +1,11 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Search, ChevronLeft, BookOpen, Download, Loader2, Check, X } from "lucide-react";
 import { surahs, reciters, type ReciterId } from "@/data/surahs";
 import { PageHeader } from "@/components/PageHeader";
 import { ContinueReading } from "@/components/ContinueReading";
-import { downloadFullSurah, audioKey } from "@/lib/quran-api";
-import { getCachedAudioKeys } from "@/lib/db";
+import { downloadFullSurah, downloadMushafPage, fetchSurahText, audioKey } from "@/lib/quran-api";
+import { getCachedAudioKeys, getCachedMushafPageKeys, getCachedSurahNumbers } from "@/lib/db";
 
 export const Route = createFileRoute("/quran/")({
   component: QuranIndex,
@@ -19,11 +19,18 @@ function QuranIndex() {
   const [bulkOpen, setBulkOpen] = useState(false);
   const [bulkReciter, setBulkReciter] = useState<ReciterId>("ar.yasser");
   const [bulkProgress, setBulkProgress] = useState<{ done: number; total: number; current: string } | null>(null);
-  const [cancelRef, setCancelRef] = useState<{ stop: boolean }>({ stop: false });
+  const cancelRef = useRef<AbortController | null>(null);
+  const offlineCancelRef = useRef<AbortController | null>(null);
   const [cachedKeys, setCachedKeys] = useState<Set<string>>(new Set());
+  const [cachedPages, setCachedPages] = useState<Set<string>>(new Set());
+  const [cachedSurahs, setCachedSurahs] = useState<Set<number>>(new Set());
+  const [offlineProgress, setOfflineProgress] = useState<{ done: number; total: number; current: string } | null>(null);
+  const [allRecitersProgress, setAllRecitersProgress] = useState<{ done: number; total: number; current: string } | null>(null);
 
   useEffect(() => {
     getCachedAudioKeys().then(setCachedKeys);
+    getCachedMushafPageKeys().then(setCachedPages);
+    getCachedSurahNumbers().then(setCachedSurahs);
   }, [bulkProgress]);
 
   const filtered = useMemo(() => {
@@ -42,28 +49,87 @@ function QuranIndex() {
   }, [cachedKeys, bulkReciter]);
 
   async function startBulkDownload() {
-    const ctrl = { stop: false };
-    setCancelRef(ctrl);
+    const controller = new AbortController();
+    cancelRef.current = controller;
     setBulkProgress({ done: 0, total: surahs.length, current: surahs[0].name });
     try {
       for (let i = 0; i < surahs.length; i++) {
-        if (ctrl.stop) break;
+        if (controller.signal.aborted) break;
         const s = surahs[i];
         setBulkProgress({ done: i, total: surahs.length, current: s.name });
         try {
-          await downloadFullSurah(bulkReciter, s.number);
+          await downloadFullSurah(bulkReciter, s.number, undefined, controller.signal);
         } catch (e) {
-          console.error(`Failed surah ${s.number}`, e);
+          if (!controller.signal.aborted) console.error(`Failed surah ${s.number}`, e);
         }
       }
     } finally {
+      cancelRef.current = null;
       setBulkProgress(null);
       setCachedKeys(await getCachedAudioKeys());
     }
   }
 
+  async function startAllRecitersDownload() {
+    if (!window.confirm("تنزيل تسجيلات القرآن كاملة للقراء السبعة قد يحتاج عدة غيغابايت من المساحة والبيانات. هل تريد المتابعة؟")) return;
+    const controller = new AbortController();
+    cancelRef.current = controller;
+    const total = reciters.length * surahs.length;
+    let done = 0;
+    try {
+      for (const r of reciters) {
+        for (const s of surahs) {
+          if (controller.signal.aborted) return;
+          setAllRecitersProgress({ done, total, current: `${r.name} — ${s.name}` });
+          try {
+            await downloadFullSurah(r.id, s.number, undefined, controller.signal);
+          } catch (e) {
+            if (!controller.signal.aborted) console.error(`Failed ${r.id} / ${s.number}`, e);
+          }
+          done++;
+        }
+      }
+    } finally {
+      cancelRef.current = null;
+      setAllRecitersProgress(null);
+      setCachedKeys(await getCachedAudioKeys());
+    }
+  }
+
   function cancelBulk() {
-    cancelRef.stop = true;
+    cancelRef.current?.abort();
+  }
+
+  async function downloadOfflineQuran() {
+    const controller = new AbortController();
+    offlineCancelRef.current = controller;
+    const total = 604 + surahs.length;
+    let done = 0;
+    try {
+      for (let page = 1; page <= 604; page++) {
+        if (controller.signal.aborted) return;
+        setOfflineProgress({ done, total, current: `صفحة المصحف ${page}` });
+        await downloadMushafPage(page, "tajweed", undefined, controller.signal);
+        done++;
+      }
+      for (const surah of surahs) {
+        if (controller.signal.aborted) return;
+        setOfflineProgress({ done, total, current: `سورة ${surah.name}` });
+        await fetchSurahText(surah.number, controller.signal);
+        done++;
+      }
+    } catch (e) {
+      if (!controller.signal.aborted) console.error("Offline Quran download failed", e);
+    } finally {
+      offlineCancelRef.current = null;
+      setOfflineProgress(null);
+      setCachedPages(await getCachedMushafPageKeys());
+      setCachedSurahs(await getCachedSurahNumbers());
+    }
+  }
+
+  function cancelOfflineDownload() {
+    offlineCancelRef.current?.abort();
   }
 
   return (
@@ -84,11 +150,31 @@ function QuranIndex() {
             <Download className="h-5 w-5" />
           </div>
           <div className="flex-1">
-            <p className="font-extrabold">تحميل المصحف كاملاً</p>
-            <p className="text-[11px] opacity-90">للاستماع بدون إنترنت • 114 سورة</p>
+            <p className="font-extrabold">تنزيل أصوات القراء</p>
+            <p className="text-[11px] opacity-90">للاستماع دون إنترنت • اختر قارئًا أو السبعة</p>
           </div>
           <ChevronLeft className="h-5 w-5" />
         </button>
+
+        <div className="rounded-2xl border p-4" style={{ background: "var(--card)" }}>
+          <div className="mb-2 flex items-center justify-between gap-2">
+            <div>
+              <p className="font-extrabold">المصحف دون إنترنت</p>
+              <p className="text-[11px] text-muted-foreground">604 صفحات تجويد + نص السور • نحو 75 م.ب</p>
+              <p className="mt-1 text-[10px] text-muted-foreground">المحفوظ: {cachedPages.size} / 604 صفحة • {cachedSurahs.size} / 114 سورة</p>
+            </div>
+            <Download className="h-5 w-5 shrink-0" style={{ color: "var(--gold)" }} />
+          </div>
+          {offlineProgress ? (
+            <div className="space-y-2">
+              <p className="truncate text-xs">{offlineProgress.current} • {offlineProgress.done} / {offlineProgress.total}</p>
+              <div className="h-2 overflow-hidden rounded-full bg-muted"><div className="h-full" style={{ width: `${Math.round(offlineProgress.done / offlineProgress.total * 100)}%`, background: "var(--gradient-gold)" }} /></div>
+              <button onClick={cancelOfflineDownload} className="w-full rounded-xl bg-destructive py-2 text-sm font-bold text-destructive-foreground">إيقاف التنزيل</button>
+            </div>
+          ) : (
+            <button onClick={downloadOfflineQuran} className="w-full rounded-xl py-2.5 text-sm font-bold text-primary-foreground" style={{ background: "var(--gradient-primary)" }}>تنزيل الصفحات ونص القرآن</button>
+          )}
+        </div>
 
         <div
           className="flex items-center gap-2 rounded-2xl border px-4 py-3"
@@ -155,7 +241,7 @@ function QuranIndex() {
             <div className="mx-auto mb-4 h-1.5 w-12 rounded-full bg-muted" />
             <h3 className="mb-1 text-lg font-extrabold">تحميل المصحف كاملاً</h3>
             <p className="mb-4 text-xs text-muted-foreground">
-              اختر القارئ ثم اضغط تحميل. الحجم ≈ 1.5 جيجا تقريباً.
+              نزّل سور قارئ واحد أو اختر تنزيل أصوات القراء السبعة كاملة. تنزيل كل القراء قد يحتاج عدة غيغابايت؛ ابدأه على شبكة Wi-Fi وتأكد من المساحة.
             </p>
 
             <div className="mb-4 space-y-2">
@@ -183,7 +269,17 @@ function QuranIndex() {
               المحمّل لهذا القارئ: <b>{downloadedCount}</b> / 114
             </p>
 
-            {bulkProgress ? (
+            {allRecitersProgress ? (
+              <div className="space-y-3">
+                <div className="rounded-xl border p-3">
+                  <p className="text-xs text-muted-foreground">تنزيل أصوات القراء السبعة</p>
+                  <p className="truncate font-bold">{allRecitersProgress.current}</p>
+                  <p className="mt-1 text-xs">{allRecitersProgress.done} / {allRecitersProgress.total}</p>
+                  <div className="mt-2 h-2 w-full overflow-hidden rounded-full bg-muted"><div className="h-full transition-all" style={{ width: `${allRecitersProgress.done / allRecitersProgress.total * 100}%`, background: "var(--gradient-gold)" }} /></div>
+                </div>
+                <button onClick={cancelBulk} className="flex w-full items-center justify-center gap-2 rounded-2xl bg-destructive py-3 font-bold text-destructive-foreground"><X className="h-4 w-4" />إيقاف التنزيل</button>
+              </div>
+            ) : bulkProgress ? (
               <div className="space-y-3">
                 <div className="rounded-xl border p-3">
                   <p className="text-xs text-muted-foreground">جاري تحميل</p>
@@ -221,7 +317,15 @@ function QuranIndex() {
                   style={{ background: "var(--gradient-primary)", color: "var(--primary-foreground)" }}
                 >
                   <Download className="h-4 w-4" />
-                  ابدأ التحميل
+                  تنزيل القارئ
+                </button>
+                <button
+                  onClick={startAllRecitersDownload}
+                  className="mt-2 flex w-full items-center justify-center gap-2 rounded-2xl border py-3 font-bold"
+                  style={{ borderColor: "var(--gold)", color: "var(--gold)" }}
+                >
+                  <Download className="h-4 w-4" />
+                  تنزيل أصوات القراء السبعة
                 </button>
               </div>
             )}
