@@ -505,65 +505,14 @@ function SurahReader() {
   }
 
   const currentMushafPage = pages[page]?.mushafPage;
-  const currentJuz = pages[page]?.ayahs[0]?.juz;
 
   return (
     <div className="fixed inset-0 z-40 flex flex-col" style={{ background: "var(--mushaf-paper)", paddingTop: "env(safe-area-inset-top)", paddingBottom: "env(safe-area-inset-bottom)" }}>
-      {/* Reader controls stay visible while reading. */}
-      <div className="shrink-0">
-        <div
-          className="flex items-center justify-between gap-2 border-b px-3 py-3"
-          style={{ background: "var(--gradient-hero)" }}
-        >
-          <Link to="/quran" className="flex h-9 w-9 items-center justify-center rounded-full bg-white/15 text-primary-foreground">
-            <ChevronRight className="h-5 w-5" />
-          </Link>
-          <div className="flex-1 text-center text-primary-foreground">
-            <p className="text-base font-extrabold font-quran">سورة {meta.name}</p>
-            <p className="text-[10px] opacity-80">
-              {currentMushafPage ? <>صفحة المصحف <bdi dir="ltr">{currentMushafPage}</bdi> • </> : ""}
-              <bdi dir="ltr">{page + 1} / {pages.length}</bdi>
-            </p>
-          </div>
-          <div className="flex items-center gap-1">
-          <button onClick={() => emblaApi?.scrollPrev()} disabled={page === 0} className="flex h-9 w-9 items-center justify-center rounded-full bg-white/15 text-primary-foreground disabled:opacity-40" aria-label="الصفحة السابقة">
-            <ChevronRight className="h-5 w-5" />
-          </button>
-          <button
-            onClick={() => setTajweedMode((v) => !v)}
-            className={cn(
-              "flex h-9 items-center gap-1 rounded-full px-3 text-[11px] font-extrabold text-primary-foreground transition-all",
-              tajweedMode ? "bg-white/40 ring-2 ring-white/70" : "bg-white/15"
-            )}
-            aria-label={tajweedMode ? "عرض النسخة الواضحة" : "تفعيل ألوان التجويد"}
-          >
-            <Palette className="h-4 w-4" />
-            <span>{tajweedMode ? "تجويد" : "وضوح عالٍ"}</span>
-          </button>
-          <button onClick={() => emblaApi?.scrollNext()} disabled={page === pages.length - 1} className="flex h-9 w-9 items-center justify-center rounded-full bg-white/15 text-primary-foreground disabled:opacity-40" aria-label="الصفحة التالية">
-            <ChevronRight className="h-5 w-5 rotate-180" />
-          </button>
-        </div>
-        </div>
-
-        {/* Tajweed legend bar */}
-        {tajweedMode && (
-          <div className="flex items-center gap-3 overflow-x-auto border-b px-3 py-2 hide-scrollbar" style={{ background: "color-mix(in oklab, var(--gold) 6%, var(--card))" }}>
-            <button onClick={() => setShowLegend(true)} className="flex shrink-0 items-center gap-1 rounded-full border bg-card px-3 py-1.5 text-[11px] font-bold">
-              <Info className="h-3.5 w-3.5" /> مفتاح الألوان
-            </button>
-            {tajweedLegend.map((l) => (
-              <div key={l.label} className="flex shrink-0 items-center gap-1.5 text-[11px]">
-                <span className="h-3 w-3 rounded-full" style={{ background: l.color }} />
-                <span className="text-muted-foreground">{l.label}</span>
-              </div>
-            ))}
-          </div>
-        )}
-
-        {/* Reciter quick bar */}
+      {/* Reciter quick bar moved to the top of the reading area. */}
         <div className="flex items-center gap-2 border-b px-3 py-2 text-xs" style={{ background: "color-mix(in oklab, var(--mushaf-paper) 80%, var(--card))" }}>
-          <Volume2 className="h-3.5 w-3.5 text-muted-foreground" />
+          <Link to="/quran" className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border bg-card" aria-label="العودة لقائمة السور">
+            <ChevronRight className="h-4 w-4" />
+          </Link>
           <button
             onClick={() => setShowReciterSheet(true)}
             className="flex-1 truncate rounded-full border bg-card px-3 py-1.5 text-right font-bold"
@@ -606,6 +555,9 @@ function SurahReader() {
               <Download className="h-3.5 w-3.5" />
             )}
           </button>
+          <button onClick={() => setShowReaderActions((open) => !open)} className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border bg-card" aria-label="أدوات القراءة" aria-expanded={showReaderActions}>
+            <BookOpen className="h-4 w-4" />
+          </button>
         </div>
       </div>
       {audioError && <div role="alert" className="relative z-30 mx-3 mt-2 rounded-xl border border-destructive/30 bg-destructive/10 px-3 py-2 text-xs font-bold text-destructive">{audioError}</div>}
@@ -615,7 +567,7 @@ function SurahReader() {
         <div className="flex h-full w-full">
           {pages.map((pg, idx) => (
             <div key={pg.mushafPage} className="h-full min-w-0 shrink-0 grow-0 basis-full">
-              <div className="relative flex h-full w-full items-center justify-center px-1 py-2">
+              <div className="relative flex h-full w-full items-center justify-center p-0">
                 {idx === page && !pageImageLoaded && !pageImageError && (
                   <Loader2 className="absolute h-8 w-8 animate-spin text-muted-foreground" aria-label="جارٍ تحميل صفحة المصحف" />
                 )}
@@ -644,44 +596,30 @@ function SurahReader() {
         </div>
       </div>
 
-      {/* Mushaf bottom strip — surah name | page number | juz */}
-      <div
-        className="flex items-center justify-between border-t px-5 py-2 text-xs font-bold"
-        style={{
-          background: "color-mix(in oklab, var(--mushaf-paper) 92%, var(--mushaf-edge))",
-          color: "var(--mushaf-ink)",
-          borderColor: "color-mix(in oklab, var(--gold) 35%, transparent)",
-        }}
-      >
-        <span className="font-quran" style={{ color: "color-mix(in oklab, var(--mushaf-ink) 75%, transparent)" }}>
-          {currentJuz ? `الجزء ${currentJuz}` : ""}
-        </span>
-        <span
-          className="font-quran tabular-nums"
-          style={{ fontSize: 16, color: "var(--gold)" }}
-        >
-          {currentMushafPage ?? page + 1}
-        </span>
-        <span className="font-quran" style={{ color: "color-mix(in oklab, var(--mushaf-ink) 75%, transparent)" }}>
-          سورة {meta.name}
-        </span>
-      </div>
-
-      {/* Reader actions remain one tap away, while page and audio controls stay visible. */}
-      <div className="absolute bottom-[4.75rem] left-4 z-[70]">
-        {showReaderActions && (
-          <div className="mb-3 grid w-52 gap-1.5 rounded-2xl border p-2 shadow-2xl" style={{ background: "var(--card)", borderColor: "var(--gold)" }}>
+      {/* Additional reading tools, opened from the compact top toolbar. */}
+      {showReaderActions && (
+        <div className="absolute left-3 top-[calc(env(safe-area-inset-top)+3.5rem)] z-[70]">
+          <div className="grid w-56 gap-1.5 rounded-2xl border p-2 shadow-2xl" style={{ background: "var(--card)", borderColor: "var(--gold)" }}>
             <button onClick={() => { playCurrentPage(); setShowReaderActions(false); }} className="flex items-center gap-2 rounded-xl px-3 py-2 text-right text-sm font-bold"><Play className="h-4 w-4" /> تلاوة الصفحة</button>
             <button onClick={() => { playFullSurah(); setShowReaderActions(false); }} className="flex items-center gap-2 rounded-xl px-3 py-2 text-right text-sm font-bold"><BookOpen className="h-4 w-4" /> تلاوة السورة</button>
             <button onClick={() => { setShowReciterSheet(true); setShowReaderActions(false); }} className="flex items-center gap-2 rounded-xl px-3 py-2 text-right text-sm font-bold"><Volume2 className="h-4 w-4" /> اختيار القارئ</button>
-            <button onClick={() => { setShowLegend(true); setShowReaderActions(false); }} className="flex items-center gap-2 rounded-xl px-3 py-2 text-right text-sm font-bold"><Palette className="h-4 w-4" /> مفتاح التجويد</button>
+            <button onClick={() => { setShowLegend(true); setShowReaderActions(false); }} className="flex items-center gap-2 rounded-xl px-3 py-2 text-right text-sm font-bold"><Palette className="h-4 w-4" /> مفتاح ألوان التجويد</button>
             <button onClick={() => { setTafsirSelection(false); setTafsirAyah(pages[page]?.ayahs[0]?.numberInSurah ?? null); setShowReaderActions(false); }} className="flex items-center gap-2 rounded-xl px-3 py-2 text-right text-sm font-bold"><BookOpen className="h-4 w-4" /> تفسير أول آية بالصفحة</button>
             <button onClick={() => { setShowAyahSelection(true); setShowReaderActions(false); }} className="flex items-center gap-2 rounded-xl px-3 py-2 text-right text-sm font-bold"><ListChecks className="h-4 w-4" /> تحديد عدة آيات</button>
             <button onClick={() => { void downloadAll(); setShowReaderActions(false); }} disabled={downloading !== null} className="flex items-center gap-2 rounded-xl px-3 py-2 text-right text-sm font-bold disabled:opacity-50"><Download className="h-4 w-4" /> تحميل السورة</button>
           </div>
-        )}
-        <button onClick={() => setShowReaderActions((open) => !open)} className="flex h-14 w-14 items-center justify-center rounded-full shadow-xl" style={{ background: "var(--gradient-gold)", color: "var(--gold-foreground)" }} aria-label="أدوات القراءة">
-          {showReaderActions ? <X className="h-6 w-6" /> : <BookOpen className="h-6 w-6" />}
+        </div>
+      )}
+      {/* Floating control now toggles tajweed directly. */}
+      <div className="absolute bottom-6 left-4 z-[70]">
+        <button
+          onClick={() => setTajweedMode((value) => !value)}
+          aria-pressed={tajweedMode}
+          aria-label={tajweedMode ? "إيقاف ألوان التجويد" : "تفعيل ألوان التجويد"}
+          className="flex h-14 w-14 items-center justify-center rounded-full shadow-xl"
+          style={{ background: "var(--gradient-gold)", color: "var(--gold-foreground)" }}
+        >
+          <Palette className="h-6 w-6" />
         </button>
       </div>
 
