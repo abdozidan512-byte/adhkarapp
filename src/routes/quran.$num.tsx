@@ -1,7 +1,9 @@
 import { createFileRoute, Link, notFound } from "@tanstack/react-router";
+import { Capacitor } from "@capacitor/core";
+import { Playlist } from "@dwbn/capacitor-plugin-playlist";
 import { useEffect, useMemo, useRef, useState } from "react";
 import useEmblaCarousel from "embla-carousel-react";
-import { ChevronRight, Play, Pause, Download, Check, Loader2, Volume2, Palette, Info, BookOpen, X, ListChecks, Repeat2 } from "lucide-react";
+import { ChevronRight, Play, Pause, Download, Check, Loader2, Volume2, Palette, Info, BookOpen, X, ListChecks, Repeat2, Rewind, FastForward } from "lucide-react";
 import { surahs, reciters, type ReciterId } from "@/data/surahs";
 import { tajweedLegend } from "@/lib/tajweed";
 import { fetchSurahTafsir, tafsirEditions, type TafsirAyah } from "@/lib/tafsir";
@@ -47,6 +49,21 @@ export const Route = createFileRoute("/quran/$num")({
 type QuranAyah = { numberInSurah: number; text: string; page?: number; juz?: number };
 type QuranPage = { ayahs: QuranAyah[]; mushafPage: number };
 
+let nativePlaylistReady: Promise<void> | null = null;
+
+function ensureNativePlaylist() {
+  if (!nativePlaylistReady) {
+    nativePlaylistReady = (async () => {
+      await Playlist.setOptions({ verbose: false, resetStreamOnPause: false });
+      await Playlist.initialize();
+    })().catch((error) => {
+      nativePlaylistReady = null;
+      throw error;
+    });
+  }
+  return nativePlaylistReady;
+}
+
 async function downloadConcurrently<T>(
   items: T[],
   concurrency: number,
@@ -79,6 +96,8 @@ function SurahReader() {
   const [error, setError] = useState<string | null>(null);
   const [reciter, setReciter] = useState<ReciterId>("ar.yasser");
   const [playing, setPlaying] = useState<number | null>(null);
+  const [audioPaused, setAudioPaused] = useState(false);
+  const [repeatPlayback, setRepeatPlayback] = useState(false);
   const [downloading, setDownloading] = useState<{ ayah: number | "all"; pct: number } | null>(null);
   const [downloadMessage, setDownloadMessage] = useState<{ kind: "success" | "error"; text: string } | null>(null);
   const [showReciterSheet, setShowReciterSheet] = useState(false);
@@ -100,6 +119,8 @@ function SurahReader() {
   const [tafsirLoading, setTafsirLoading] = useState(false);
 
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const nativePlaybackRef = useRef(false);
+  const audioPositionRef = useRef(0);
   const audioObjectUrlRef = useRef<string | null>(null);
   const audioFallbackRef = useRef<WeakSet<HTMLAudioElement>>(new WeakSet());
   const cachedAudioKeysRef = useRef<Set<string>>(new Set());
@@ -112,6 +133,39 @@ function SurahReader() {
   useEffect(() => {
     selectedAyahsRef.current = selectedAyahs;
   }, [selectedAyahs]);
+
+  useEffect(() => {
+    if (!Capacitor.isNativePlatform()) return;
+    let active = true;
+    let statusHandle: { remove: () => Promise<void> } | null = null;
+    void ensureNativePlaylist()
+      .then(async () => {
+        if (!active) return;
+        statusHandle = await Playlist.addListener("status", ({ status }) => {
+          const value = status.value as { currentPosition?: number; trackId?: string };
+          if (typeof value.currentPosition === "number") audioPositionRef.current = value.currentPosition;
+          if (status.msgType === 30) setAudioPaused(false);
+          if (status.msgType === 35) setAudioPaused(true);
+          if (status.msgType === 5) {
+            setAudioError("تعذّر تشغيل التلاوة في مشغل الخلفية. تحقق من الاتصال أو أعد المحاولة.");
+            setPlaying(null);
+            nativePlaybackRef.current = false;
+          }
+          if (status.msgType === 50 || status.msgType === 105 || status.msgType === 60) {
+            if (status.msgType !== 50) {
+              setPlaying(null);
+              setAudioPaused(false);
+              nativePlaybackRef.current = false;
+            }
+          }
+        });
+      })
+      .catch((error) => console.warn("Native audio player unavailable", error));
+    return () => {
+      active = false;
+      void statusHandle?.remove();
+    };
+  }, []);
 
   useEffect(() => {
     repeatSelectedRef.current = repeatSelectedAyahs;
@@ -187,7 +241,7 @@ function SurahReader() {
   // Stop audio and release local media URLs when leaving the reader.
   useEffect(() => {
     return () => {
-      audioRef.current?.pause();
+      if (!nativePlaybackRef.current) audioRef.current?.pause();
       audioRef.current = null;
       if (audioObjectUrlRef.current) URL.revokeObjectURL(audioObjectUrlRef.current);
     };
@@ -348,7 +402,134 @@ function SurahReader() {
     });
   }
 
+  function nativeAyahTrack(ayah: number) {
+    const src = getAyahAudioUrl(reciter, meta.number, ayah);
+    if (!src) return null;
+    return {
+      trackId: `ayah-${meta.number}-${ayah}`,
+      assetUrl: src,
+      title: `سورة ${meta.name} — الآية ${ayah}`,
+      artist: reciters.find((item) => item.id === reciter)?.name ?? "قارئ القرآن",
+      album: "القرآن الكريم",
+      isStream: false,
+    };
+  }
+
+  async function playNativeTracks(
+    tracks: Array<NonNullable<ReturnType<typeof nativeAyahTrack>> | {
+      trackId: string;
+      assetUrl: string;
+      title: string;
+      artist: string;
+      album: string;
+      isStream: boolean;
+    }>,
+    loop: boolean,
+    activeAyah: number | null = -1,
+  ) {
+    if (!tracks.length) {
+      setAudioError("لا توجد ملفات صوتية متاحة للتشغيل.");
+      return;
+    }
+    stopCurrentAudio();
+    nativePlaybackRef.current = true;
+    setAudioError(null);
+    setPlaying(activeAyah);
+    setAudioPaused(false);
+    setRepeatPlayback(loop);
+    audioPositionRef.current = 0;
+    try {
+      await ensureNativePlaylist();
+      if (Capacitor.getPlatform() === "android") {
+        const { LocalNotifications } = await import("@capacitor/local-notifications");
+        const permission = await LocalNotifications.checkPermissions().catch(() => null);
+        if (permission?.display !== "granted") {
+          await LocalNotifications.requestPermissions().catch(() => undefined);
+        }
+      }
+      await Playlist.setLoop({ loop });
+      await Playlist.setPlaylistItems({
+        items: tracks,
+        options: { startPaused: true },
+      });
+      await Playlist.play();
+    } catch (playError) {
+      console.error("Native Quran playback failed", playError);
+      nativePlaybackRef.current = false;
+      setPlaying(null);
+      setAudioPaused(false);
+      setAudioError("تعذّر بدء مشغل التلاوة بالخلفية. حدّث التطبيق وحاول مجددًا.");
+    }
+  }
+
+  function toggleAudioPlayback() {
+    if (nativePlaybackRef.current) {
+      const nextPaused = !audioPaused;
+      setAudioPaused(nextPaused);
+      void (nextPaused ? Playlist.pause() : Playlist.play()).catch((error) => console.error("Audio control failed", error));
+      return;
+    }
+    const audio = audioRef.current;
+    if (!audio) return;
+    if (audio.paused) {
+      void audio.play().then(() => setAudioPaused(false)).catch((error) => console.error("Audio resume failed", error));
+    } else {
+      audio.pause();
+      setAudioPaused(true);
+    }
+  }
+
+  function seekPlayback(seconds: number) {
+    if (nativePlaybackRef.current) {
+      const position = Math.max(0, audioPositionRef.current + seconds);
+      audioPositionRef.current = position;
+      void Playlist.seekTo({ position }).catch((error) => console.error("Audio seek failed", error));
+      return;
+    }
+    const audio = audioRef.current;
+    if (audio) {
+      audio.currentTime = Math.max(0, audio.currentTime + seconds);
+      audioPositionRef.current = audio.currentTime;
+    }
+  }
+
+  function toggleRepeatPlayback() {
+    const next = !repeatPlayback;
+    setRepeatPlayback(next);
+    setRepeatSelectedAyahs(next);
+    repeatSelectedRef.current = next;
+    if (nativePlaybackRef.current) {
+      void Playlist.setLoop({ loop: next }).catch((error) => console.error("Repeat control failed", error));
+    } else if (playing === -1 && audioRef.current) {
+      audioRef.current.loop = next;
+    }
+  }
+
+  function toggleSelectedRepeat() {
+    const next = !repeatSelectedRef.current;
+    repeatSelectedRef.current = next;
+    setRepeatSelectedAyahs(next);
+    setRepeatPlayback(next);
+    if (nativePlaybackRef.current) {
+      void Playlist.setLoop({ loop: next }).catch((error) => console.error("Repeat control failed", error));
+    }
+  }
+
   function playAyah(ayah: number, existingAudio?: HTMLAudioElement) {
+    if (Capacitor.isNativePlatform()) {
+      const ayahNumbers = [ayah, ...playQueueRef.current];
+      const tracks = ayahNumbers.map(nativeAyahTrack);
+      if (tracks.every((track) => track !== null)) {
+        playQueueRef.current = [];
+        void playNativeTracks(
+          tracks as NonNullable<ReturnType<typeof nativeAyahTrack>>[],
+          repeatSelectedRef.current && selectedAyahsRef.current.length > 0,
+          ayah,
+        );
+        return;
+      }
+    }
+
     const src = getAyahAudioUrl(reciter, meta.number, ayah);
     if (!src) {
       setAudioError("لا تتوفر تلاوة آية بآية لهذا القارئ؛ شغّل السورة كاملة.");
@@ -366,15 +547,16 @@ function SurahReader() {
       stopCurrentAudio();
     }
 
+    nativePlaybackRef.current = false;
     setAudioError(null);
     setPlaying(ayah);
+    setAudioPaused(false);
     audio.preload = "auto";
-    // Do not set crossOrigin here: several recitation hosts do not send CORS
-    // headers, and media playback itself does not need cross-origin access.
     audio.removeAttribute("crossorigin");
     audio.src = src;
     audio.load();
     audioRef.current = audio;
+    audio.ontimeupdate = () => { audioPositionRef.current = audio.currentTime; };
     audio.onended = () => {
       clearAudioObjectUrl();
       const next = playQueueRef.current.shift();
@@ -386,11 +568,10 @@ function SurahReader() {
       } else {
         audioRef.current = null;
         setPlaying(null);
+        setAudioPaused(false);
       }
     };
     audio.onerror = () => void fallBackToCachedAudio(audio, ayah);
-    // Keep one media element for the whole queue; Android WebView can reject
-    // a new Audio instance created later from an ended event.
     audio.play().catch((playError) => {
       console.error("Ayah playback failed", playError);
       void fallBackToCachedAudio(audio, ayah);
@@ -399,23 +580,50 @@ function SurahReader() {
 
   function playFullSurahFile() {
     const src = getFullSurahAudioUrl(reciter, meta.number);
+    if (Capacitor.isNativePlatform()) {
+      if (src) {
+        const track = {
+          trackId: `surah-${meta.number}`,
+          assetUrl: src,
+          title: `سورة ${meta.name}`,
+          artist: reciters.find((item) => item.id === reciter)?.name ?? "قارئ القرآن",
+          album: "القرآن الكريم",
+          isStream: false,
+        };
+        void playNativeTracks([track], repeatPlayback, -1);
+        return;
+      }
+      const tracks = (ayahs ?? []).map((ayah) => nativeAyahTrack(ayah.numberInSurah));
+      if (tracks.length && tracks.every((track) => track !== null)) {
+        void playNativeTracks(
+          tracks as NonNullable<ReturnType<typeof nativeAyahTrack>>[],
+          repeatPlayback,
+          tracks[0] ? ayahs?.[0]?.numberInSurah ?? -1 : -1,
+        );
+        return;
+      }
+    }
     if (!src) {
       setAudioError("لا يوجد رابط تلاوة لهذه السورة.");
       setPlaying(null);
       return;
     }
     stopCurrentAudio();
+    nativePlaybackRef.current = false;
     setAudioError(null);
     setPlaying(-1);
+    setAudioPaused(false);
     const audio = new Audio(src);
     audio.preload = "auto";
-    // Avoid CORS mode for remote media servers that do not expose CORS headers.
     audio.removeAttribute("crossorigin");
+    audio.loop = repeatPlayback;
     audioRef.current = audio;
+    audio.ontimeupdate = () => { audioPositionRef.current = audio.currentTime; };
     audio.onended = () => {
       clearAudioObjectUrl();
       audioRef.current = null;
       setPlaying(null);
+      setAudioPaused(false);
     };
     audio.onerror = () => void fallBackToCachedAudio(audio);
     audio.play().catch((playError) => {
@@ -426,8 +634,16 @@ function SurahReader() {
 
   function stopPlay() {
     stopCurrentAudio();
+    if (nativePlaybackRef.current) {
+      nativePlaybackRef.current = false;
+      void Playlist.clearAllItems().catch((error) => console.error("Audio stop failed", error));
+    }
     playQueueRef.current = [];
     setPlaying(null);
+    setAudioPaused(false);
+    setRepeatPlayback(false);
+    setRepeatSelectedAyahs(false);
+    repeatSelectedRef.current = false;
   }
 
   function playFullSurah() {
@@ -651,11 +867,11 @@ function SurahReader() {
             </button>
           ) : (
             <button
-              onClick={stopPlay}
+              onClick={toggleAudioPlayback}
               className="flex items-center gap-1 rounded-full bg-destructive px-3 py-1.5 text-xs font-bold text-destructive-foreground"
             >
-              <Pause className="h-3.5 w-3.5" />
-              إيقاف
+              {audioPaused ? <Play className="h-3.5 w-3.5" /> : <Pause className="h-3.5 w-3.5" />}
+              {audioPaused ? "استئناف" : "إيقاف مؤقت"}
             </button>
           )}
           <button
@@ -681,6 +897,13 @@ function SurahReader() {
             <BookOpen className="h-4 w-4" />
           </button>
         </div>
+      {playing !== null && (
+        <div className="flex items-center justify-center gap-2 border-b px-2 py-1.5" style={{ background: "color-mix(in oklab, var(--mushaf-paper) 80%, var(--card))" }} aria-label="عناصر التحكم بالتلاوة">
+          <button onClick={() => seekPlayback(-5)} className="flex items-center gap-1 rounded-full border bg-card px-2.5 py-1 text-[11px] font-bold" aria-label="الرجوع خمس ثوانٍ"><Rewind className="h-3.5 w-3.5" />٥ ث</button>
+          <button onClick={toggleRepeatPlayback} aria-pressed={repeatPlayback} className="flex items-center gap-1 rounded-full border px-2.5 py-1 text-[11px] font-bold" style={repeatPlayback ? { background: "var(--gradient-gold)", color: "var(--gold-foreground)" } : { background: "var(--card)" }}><Repeat2 className="h-3.5 w-3.5" />تكرار</button>
+          <button onClick={() => seekPlayback(5)} className="flex items-center gap-1 rounded-full border bg-card px-2.5 py-1 text-[11px] font-bold" aria-label="التقديم خمس ثوانٍ">٥ ث<FastForward className="h-3.5 w-3.5" /></button>
+        </div>
+      )}
       {downloadMessage && (
         <div role={downloadMessage.kind === "error" ? "alert" : "status"} className={cn("mx-3 mt-2 rounded-xl border px-3 py-2 text-xs font-bold", downloadMessage.kind === "error" ? "border-destructive/30 bg-destructive/10 text-destructive" : "border-emerald-500/30 bg-emerald-500/10 text-emerald-700")}>
           {downloadMessage.text}
@@ -743,7 +966,7 @@ function SurahReader() {
         <div className="fixed bottom-[calc(4.5rem+env(safe-area-inset-bottom))] left-1/2 z-[85] flex max-w-[calc(100vw-1rem)] -translate-x-1/2 items-center gap-1 rounded-2xl border px-2 py-2 shadow-2xl" style={{ background: "var(--card)", borderColor: "var(--gold)" }}>
           <span className="whitespace-nowrap px-2 text-xs font-extrabold">{selectedAyahs.length} آية</span>
           <button onClick={playSelectedAyahs} className="flex items-center gap-1 rounded-xl px-2 py-2 text-xs font-bold text-primary-foreground" style={{ background: "var(--gradient-primary)" }}><Play className="h-3.5 w-3.5" /> تلاوة</button>
-          <button onClick={() => setRepeatSelectedAyahs((value) => !value)} aria-pressed={repeatSelectedAyahs} className="flex items-center gap-1 rounded-xl border px-2 py-2 text-xs font-bold" style={repeatSelectedAyahs ? { background: "var(--gradient-gold)", color: "var(--gold-foreground)" } : undefined}><Repeat2 className="h-3.5 w-3.5" /> تكرار</button>
+          <button onClick={toggleSelectedRepeat} aria-pressed={repeatSelectedAyahs} className="flex items-center gap-1 rounded-xl border px-2 py-2 text-xs font-bold" style={repeatSelectedAyahs ? { background: "var(--gradient-gold)", color: "var(--gold-foreground)" } : undefined}><Repeat2 className="h-3.5 w-3.5" /> تكرار</button>
           <button onClick={openSelectedTafsir} className="flex items-center gap-1 rounded-xl border px-2 py-2 text-xs font-bold"><BookOpen className="h-3.5 w-3.5" /> تفسير</button>
           <button onClick={() => { setSelectedAyahs([]); setRepeatSelectedAyahs(false); }} aria-label="إلغاء التحديد" className="flex h-8 w-8 items-center justify-center rounded-xl"><X className="h-4 w-4" /></button>
         </div>
