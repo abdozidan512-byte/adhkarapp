@@ -47,6 +47,9 @@ jobs:
       - name: Sync Capacitor
         run: npx cap sync android
 
+      - name: Configure Kotlin version for media player
+        run: sed -i "/cordovaAndroidVersion =/a\\    kotlin_version = '2.4.20'" android/variables.gradle
+
       - name: Build debug APK
         working-directory: android
         run: ./gradlew assembleDebug
