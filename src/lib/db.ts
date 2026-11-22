@@ -33,6 +33,10 @@ interface AzkarDB extends DBSchema {
     key: string;
     value: any;
   };
+  mushafPages: {
+    key: string; // "tajweed-1" etc.
+    value: { key: string; page: number; mode: "tajweed" | "clear"; blob: Blob; size: number; cachedAt: number };
+  };
 }
 
 let dbPromise: Promise<IDBPDatabase<AzkarDB>> | null = null;
@@ -40,12 +44,13 @@ let dbPromise: Promise<IDBPDatabase<AzkarDB>> | null = null;
 export function getDB() {
   if (typeof window === "undefined") return null;
   if (!dbPromise) {
-    dbPromise = openDB<AzkarDB>("azkar-app", 1, {
+    dbPromise = openDB<AzkarDB>("azkar-app", 2, {
       upgrade(db) {
         if (!db.objectStoreNames.contains("quran")) db.createObjectStore("quran", { keyPath: "number" });
         if (!db.objectStoreNames.contains("prayerTimes")) db.createObjectStore("prayerTimes", { keyPath: "date" });
         if (!db.objectStoreNames.contains("audio")) db.createObjectStore("audio", { keyPath: "key" });
         if (!db.objectStoreNames.contains("settings")) db.createObjectStore("settings");
+        if (!db.objectStoreNames.contains("mushafPages")) db.createObjectStore("mushafPages", { keyPath: "key" });
       },
     });
   }
@@ -137,3 +142,26 @@ export async function getReadingProgress(): Promise<ReadingProgress | undefined>
   return getSetting<ReadingProgress>("reading-progress");
 }
 
+
+export function mushafPageKey(page: number, mode: "tajweed" | "clear" = "tajweed") {
+  return `${mode}-${page}`;
+}
+
+export async function getMushafPage(page: number, mode: "tajweed" | "clear" = "tajweed") {
+  const db = await getDB();
+  if (!db) return undefined;
+  return db.get("mushafPages", mushafPageKey(page, mode));
+}
+
+export async function saveMushafPage(page: number, mode: "tajweed" | "clear", blob: Blob) {
+  const db = await getDB();
+  if (!db) return;
+  const key = mushafPageKey(page, mode);
+  await db.put("mushafPages", { key, page, mode, blob, size: blob.size, cachedAt: Date.now() });
+}
+
+export async function getCachedMushafPageKeys(): Promise<Set<string>> {
+  const db = await getDB();
+  if (!db) return new Set();
+  return new Set(await db.getAllKeys("mushafPages"));
+}
