@@ -559,7 +559,6 @@ function SurahReader() {
             <BookOpen className="h-4 w-4" />
           </button>
         </div>
-      </div>
       {audioError && <div role="alert" className="relative z-30 mx-3 mt-2 rounded-xl border border-destructive/30 bg-destructive/10 px-3 py-2 text-xs font-bold text-destructive">{audioError}</div>}
 
       {/* The Mushaf page stays in its own reading area between the controls and footer. */}
