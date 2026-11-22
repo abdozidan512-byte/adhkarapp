@@ -1,7 +1,7 @@
 import { createFileRoute, Link, notFound } from "@tanstack/react-router";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import useEmblaCarousel from "embla-carousel-react";
-import { ChevronRight, ZoomIn, ZoomOut, Play, Pause, Download, Check, Loader2, Volume2, Palette, Info, BookOpen, X } from "lucide-react";
+import { ChevronRight, Play, Pause, Download, Check, Loader2, Volume2, Palette, Info, BookOpen, X } from "lucide-react";
 import { surahs, reciters, type ReciterId } from "@/data/surahs";
 import { fetchSurahTajweed, renderTajweed, tajweedLegend, type TajweedAyah } from "@/lib/tajweed";
 import { fetchSurahTafsir, tafsirEditions, type TafsirAyah } from "@/lib/tafsir";
@@ -57,7 +57,7 @@ function SurahReader() {
   const search = Route.useSearch();
   const [ayahs, setAyahs] = useState<QuranAyah[] | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [fontSize, setFontSize] = useState(28);
+  const fontSize = 22;
   const [reciter, setReciter] = useState<ReciterId>("ar.yasser");
   const [playing, setPlaying] = useState<number | null>(null);
   const [downloading, setDownloading] = useState<{ ayah: number | "all"; pct: number } | null>(null);
@@ -171,8 +171,7 @@ function SurahReader() {
     if (!carousel || !measurer) return;
 
     const showBismillah = meta.number !== 1 && meta.number !== 9;
-    const baseLineHeight = 1.75;
-    const minFontSize = 14;
+    const baseLineHeight = 1.65;
     const escapeHtml = (value: string) =>
       value.replace(/[&<>"]/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[char]!));
 
@@ -191,7 +190,7 @@ function SurahReader() {
         ? `<div class="font-quran" style="font-size:${size * 1.02}px;line-height:1.3;text-align:center;margin-bottom:6px;color:var(--gold);">بِسْمِ اللَّهِ الرَّحْمَٰنِ الرَّحِيمِ</div>`
         : "";
       const body = group.map(renderAyahForMeasure).join("");
-      measurer.innerHTML = `${bismillah}<div class="font-quran" style="font-size:${size}px;line-height:${baseLineHeight};text-align:justify;text-align-last:center;color:var(--mushaf-ink);">${body}</div>`;
+      measurer.innerHTML = `${bismillah}<div class="font-quran" style="font-size:${size}px;line-height:${baseLineHeight};text-align:right;color:var(--mushaf-ink);">${body}</div>`;
       return measurer.scrollHeight;
     };
 
@@ -202,20 +201,12 @@ function SurahReader() {
       const groups: { ayahs: QuranAyah[]; fontSize: number }[] = [];
       let current: QuranAyah[] = [];
 
-      const fittedSizeFor = (ayah: QuranAyah, firstPage: boolean) => {
-        let size = fontSize;
-        while (size > minFontSize && measureGroup([ayah], size, firstPage) > targetHeight) {
-          size -= 1;
-        }
-        return size;
-      };
-
       for (const ayah of ayahs) {
         if (current.length === 0) {
           if (measureGroup([ayah], fontSize, groups.length === 0) > targetHeight) {
             groups.push({
               ayahs: [ayah],
-              fontSize: fittedSizeFor(ayah, groups.length === 0),
+              fontSize,
             });
           } else {
             current = [ayah];
@@ -229,7 +220,7 @@ function SurahReader() {
           current = [];
 
           if (measureGroup([ayah], fontSize, false) > targetHeight) {
-            groups.push({ ayahs: [ayah], fontSize: fittedSizeFor(ayah, false) });
+            groups.push({ ayahs: [ayah], fontSize });
           } else {
             current = [ayah];
           }
@@ -524,7 +515,7 @@ function SurahReader() {
               {page + 1} / {pages.length}
             </p>
           </div>
-          <div className="flex gap-1">
+          <div>
             <button
               onClick={() => setTajweedMode((v) => !v)}
               className={cn(
@@ -535,20 +526,6 @@ function SurahReader() {
             >
               <Palette className="h-4 w-4" />
               <span>تجويد</span>
-            </button>
-            <button
-              onClick={() => setFontSize((s) => Math.max(24, s - 2))}
-              disabled={fontSize <= 24}
-              className="flex h-9 w-9 items-center justify-center rounded-full bg-white/15 text-primary-foreground disabled:opacity-40"
-            >
-              <ZoomOut className="h-4 w-4" />
-            </button>
-            <button
-              onClick={() => setFontSize((s) => Math.min(32, s + 2))}
-              disabled={fontSize >= 32}
-              className="flex h-9 w-9 items-center justify-center rounded-full bg-white/15 text-primary-foreground disabled:opacity-40"
-            >
-              <ZoomIn className="h-4 w-4" />
             </button>
           </div>
         </div>
@@ -648,13 +625,13 @@ function SurahReader() {
         <div
           aria-hidden
           ref={measureRef}
-          className="font-quran pointer-events-none invisible absolute left-0 top-0 text-justify"
+          className="font-quran pointer-events-none invisible absolute left-0 top-0 text-right"
           style={{
             fontSize,
-            lineHeight: 1.75,
+            lineHeight: 1.65,
             width: "calc(100% - 16px)",
             margin: 8,
-            textAlignLast: "center" as any,
+            textAlign: "right" as any,
             whiteSpace: "normal",
           }}
         />
@@ -928,8 +905,8 @@ function MushafPage({
         </p>
       )}
       <div
-        className="font-quran flex-1 overflow-y-auto hide-scrollbar text-justify"
-        style={{ fontSize, lineHeight, color: "var(--mushaf-ink)", textAlignLast: "center" as any }}
+        className="font-quran flex-1 overflow-y-auto hide-scrollbar text-right"
+        style={{ fontSize, lineHeight, color: "var(--mushaf-ink)", textAlign: "right" as any }}
       >
         {tajweedMode && tajweedLoading && (
           <span className="mb-2 inline-flex items-center gap-2 rounded-full border bg-card px-2 py-1 text-[10px] text-muted-foreground">
