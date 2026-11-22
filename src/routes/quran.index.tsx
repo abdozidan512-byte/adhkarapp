@@ -1,6 +1,6 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { memo, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
-import { Search, ChevronLeft, BookOpen, Download, Loader2, Check, X } from "lucide-react";
+import { memo, useEffect, useMemo, useRef, useState, type ChangeEvent } from "react";
+import { Search, ChevronLeft, BookOpen, Download, Check, X } from "lucide-react";
 import { surahs, reciters, type ReciterId, type Surah } from "@/data/surahs";
 import { PageHeader } from "@/components/PageHeader";
 import { ContinueReading } from "@/components/ContinueReading";
@@ -51,9 +51,37 @@ function findSurahs(query: string): Surah[] {
 
 const SurahSearch = memo(function SurahSearch() {
   const [query, setQuery] = useState("");
-  const deferredQuery = useDeferredValue(query);
-  const results = useMemo(() => findSurahs(deferredQuery), [deferredQuery]);
-  const isUpdating = query !== deferredQuery;
+  const inputRef = useRef<HTMLInputElement>(null);
+  const searchTimerRef = useRef<number | null>(null);
+  const results = useMemo(() => findSurahs(query), [query]);
+
+  useEffect(() => {
+    return () => {
+      if (searchTimerRef.current !== null) {
+        window.clearTimeout(searchTimerRef.current);
+      }
+    };
+  }, []);
+
+  function handleQueryChange(event: ChangeEvent<HTMLInputElement>) {
+    const nextQuery = event.currentTarget.value;
+    if (searchTimerRef.current !== null) {
+      window.clearTimeout(searchTimerRef.current);
+    }
+    searchTimerRef.current = window.setTimeout(() => {
+      setQuery(nextQuery);
+      searchTimerRef.current = null;
+    }, 140);
+  }
+
+  function clearQuery() {
+    if (searchTimerRef.current !== null) {
+      window.clearTimeout(searchTimerRef.current);
+      searchTimerRef.current = null;
+    }
+    if (inputRef.current) inputRef.current.value = "";
+    setQuery("");
+  }
 
   return (
     <>
@@ -63,6 +91,7 @@ const SurahSearch = memo(function SurahSearch() {
       >
         <Search className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />
         <input
+          ref={inputRef}
           type="search"
           inputMode="search"
           autoComplete="off"
@@ -70,15 +99,15 @@ const SurahSearch = memo(function SurahSearch() {
           maxLength={64}
           aria-label="البحث عن سورة أو رقمها"
           aria-controls="surah-search-results"
-          value={query}
-          onChange={(event) => setQuery(event.target.value)}
+          defaultValue=""
+          onChange={handleQueryChange}
           placeholder="ابحث عن سورة أو رقم..."
           className="min-w-0 flex-1 bg-transparent text-sm outline-none"
         />
         {query.length > 0 && (
           <button
             type="button"
-            onClick={() => setQuery("")}
+            onClick={clearQuery}
             aria-label="مسح البحث"
             className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-muted-foreground"
           >
@@ -92,21 +121,14 @@ const SurahSearch = memo(function SurahSearch() {
           className="flex min-h-5 items-center justify-between px-1 text-xs text-muted-foreground"
           aria-live="polite"
         >
-          <span>
-            {isUpdating
-              ? "جارٍ تحديث النتائج..."
-              : query.trim()
-                ? `${results.length} نتيجة`
-                : "جميع السور"}
-          </span>
-          {isUpdating && <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />}
+          <span>{query.trim() ? `${results.length} نتيجة` : "جميع السور"}</span>
         </div>
 
         <div id="surah-search-results" className="space-y-2">
           {results.map((surah) => (
             <SurahSearchResult key={surah.number} surah={surah} />
           ))}
-          {query.trim().length > 0 && results.length === 0 && !isUpdating && (
+          {query.trim().length > 0 && results.length === 0 && (
             <p className="py-12 text-center text-sm text-muted-foreground">
               لا توجد سورة مطابقة. جرّب الاسم بالعربية أو الإنجليزية أو رقم السورة.
             </p>
