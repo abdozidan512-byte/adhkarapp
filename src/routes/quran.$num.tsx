@@ -196,6 +196,7 @@ function SurahReader() {
     };
 
     let rafId = 0;
+    let active = true;
     const compute = () => {
       const targetHeight = Math.max(96, carousel.clientHeight - 16);
       const groups: { ayahs: QuranAyah[]; fontSize: number }[] = [];
@@ -286,16 +287,22 @@ function SurahReader() {
     };
 
     const schedule = () => {
+      if (!active) return;
       cancelAnimationFrame(rafId);
       rafId = requestAnimationFrame(compute);
     };
 
     schedule();
     const observer = new ResizeObserver(schedule);
+    const fontSet = document.fonts;
     observer.observe(carousel);
+    fontSet.addEventListener("loadingdone", schedule);
+    fontSet.ready.then(schedule);
     return () => {
+      active = false;
       cancelAnimationFrame(rafId);
       observer.disconnect();
+      fontSet.removeEventListener("loadingdone", schedule);
     };
   }, [ayahs, fontSize, meta.number, tajweedMode, tajweedAyahs]);
 
