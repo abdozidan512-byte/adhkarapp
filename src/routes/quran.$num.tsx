@@ -144,7 +144,10 @@ function SurahReader() {
         statusHandle = await Playlist.addListener("status", ({ status }) => {
           const value = status.value as { currentPosition?: number; trackId?: string };
           if (typeof value.currentPosition === "number") audioPositionRef.current = value.currentPosition;
-          if (status.msgType === 30) setAudioPaused(false);
+          if (status.msgType === 30) {
+            nativePlaybackRef.current = true;
+            setAudioPaused(false);
+          }
           if (status.msgType === 35) setAudioPaused(true);
           if (status.msgType === 5) {
             setAudioError("تعذّر تشغيل التلاوة في مشغل الخلفية. تحقق من الاتصال أو أعد المحاولة.");
