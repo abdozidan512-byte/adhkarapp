@@ -3,20 +3,18 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import useEmblaCarousel from "embla-carousel-react";
 import { ChevronRight, Play, Pause, Download, Check, Loader2, Volume2, Palette, Info, BookOpen, X } from "lucide-react";
 import { surahs, reciters, type ReciterId } from "@/data/surahs";
-import { fetchSurahTajweed, renderTajweed, tajweedLegend, type TajweedAyah } from "@/lib/tajweed";
+import { tajweedLegend } from "@/lib/tajweed";
 import { fetchSurahTafsir, tafsirEditions, type TafsirAyah } from "@/lib/tafsir";
 import {
   fetchSurahText,
   getAyahAudioUrl,
-  downloadAyahAudio,
   getAyahAudioBlob,
-  audioKey,
   getReciter,
   getFullSurahAudioUrl,
   getFullSurahBlob,
   downloadFullSurah,
 } from "@/lib/quran-api";
-import { getCachedAudioKeys, saveReadingProgress } from "@/lib/db";
+import { saveReadingProgress } from "@/lib/db";
 import { cn } from "@/lib/utils";
 import { recordQuranPageRead, recordSurahCompleted } from "@/lib/achievements";
 
@@ -52,22 +50,27 @@ function stripTajweedMarks(text: string) {
   return text.replace(TAJWEED_MARK_RE, "$1").replace(/\]/g, "");
 }
 
+function getMushafPageImageUrl(page: number, tajweed: boolean) {
+  const collection = tajweed ? "ayat/tajweed" : "kfgqpc/hafs-wasat";
+  const extension = tajweed ? "png" : "jpg";
+  return `https://raw.githubusercontent.com/QuranHub/quran-pages-images/main/${collection}/${page}.${extension}`;
+}
+
 function SurahReader() {
   const meta = Route.useLoaderData();
   const search = Route.useSearch();
   const [ayahs, setAyahs] = useState<QuranAyah[] | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const fontSize = 24;
   const [reciter, setReciter] = useState<ReciterId>("ar.yasser");
   const [playing, setPlaying] = useState<number | null>(null);
   const [downloading, setDownloading] = useState<{ ayah: number | "all"; pct: number } | null>(null);
-  const [cachedKeys, setCachedKeys] = useState<Set<string>>(new Set());
-  const [selectedAyahs, setSelectedAyahs] = useState<Set<number>>(new Set());
   const [showReciterSheet, setShowReciterSheet] = useState(false);
   const [tajweedMode, setTajweedMode] = useState(true);
-  const [tajweedAyahs, setTajweedAyahs] = useState<TajweedAyah[] | null>(null);
-  const [tajweedLoading, setTajweedLoading] = useState(false);
   const [showLegend, setShowLegend] = useState(false);
+  const [showReaderActions, setShowReaderActions] = useState(false);
+  const [pageImageLoaded, setPageImageLoaded] = useState(false);
+  const [pageImageError, setPageImageError] = useState(false);
+  const [imageRetry, setImageRetry] = useState(0);
   const [tafsirAyah, setTafsirAyah] = useState<number | null>(null);
   const [tafsirEdition, setTafsirEdition] = useState<string>("ar.muyassar");
   const [tafsirData, setTafsirData] = useState<TafsirAyah[] | null>(null);
@@ -90,28 +93,8 @@ function SurahReader() {
     };
   }, [meta.number]);
 
+  // Reset the tafsir cache when changing surahs.
   useEffect(() => {
-    getCachedAudioKeys().then(setCachedKeys);
-  }, [downloading]);
-
-  useEffect(() => {
-    if (!tajweedMode || tajweedAyahs) return;
-    let alive = true;
-    setTajweedLoading(true);
-    fetchSurahTajweed(meta.number)
-      .then((a) => {
-        if (alive) setTajweedAyahs(a);
-      })
-      .catch((e) => console.error("tajweed", e))
-      .finally(() => alive && setTajweedLoading(false));
-    return () => {
-      alive = false;
-    };
-  }, [tajweedMode, tajweedAyahs, meta.number]);
-
-  // Reset caches when surah changes
-  useEffect(() => {
-    setTajweedAyahs(null);
     setTafsirData(null);
   }, [meta.number]);
 
@@ -173,6 +156,17 @@ function SurahReader() {
 
     return grouped;
   }, [ayahs]);
+
+  useEffect(() => {
+    setPageImageLoaded(false);
+    setPageImageError(false);
+    for (const adjacent of [pages[page - 1]?.mushafPage, pages[page + 1]?.mushafPage]) {
+      if (adjacent) {
+        const image = new Image();
+        image.src = getMushafPageImageUrl(adjacent, tajweedMode);
+      }
+    }
+  }, [pages, page, tajweedMode, imageRetry]);
 
   // Re-init the page carousel whenever the surah page list changes
   useEffect(() => {
@@ -291,30 +285,16 @@ function SurahReader() {
     playAyah(first);
   }
 
-  function playSelected() {
-    if (selectedAyahs.size === 0) return;
+  function playCurrentPage() {
     if (isSurahMode) {
-      // في وضع السورة الكاملة لا يمكن تشغيل آيات منفردة — شغّل الكامل
       playFullSurahFile();
       return;
     }
-    const list = Array.from(selectedAyahs).sort((a, b) => a - b);
-    const first = list.shift()!;
+    const list = (pages[page]?.ayahs ?? []).map((a) => a.numberInSurah);
+    const first = list.shift();
+    if (first === undefined) return;
     playQueueRef.current = list;
     playAyah(first);
-  }
-
-  async function downloadAyah(ayah: number) {
-    if (isSurahMode) return; // غير مدعوم
-    setDownloading({ ayah, pct: 0 });
-    try {
-      await downloadAyahAudio(reciter, meta.number, ayah, (pct) => setDownloading({ ayah, pct }));
-    } catch (e) {
-      console.error(e);
-    } finally {
-      setDownloading(null);
-      setCachedKeys(await getCachedAudioKeys());
-    }
   }
 
   async function downloadAll() {
@@ -335,21 +315,7 @@ function SurahReader() {
       console.error(e);
     } finally {
       setDownloading(null);
-      setCachedKeys(await getCachedAudioKeys());
     }
-  }
-
-  function isCached(ayah: number) {
-    return cachedKeys.has(audioKey(reciter, meta.number, ayah));
-  }
-
-  function toggleSelect(ayah: number) {
-    setSelectedAyahs((prev) => {
-      const next = new Set(prev);
-      if (next.has(ayah)) next.delete(ayah);
-      else next.add(ayah);
-      return next;
-    });
   }
 
   if (error) {
@@ -392,34 +358,36 @@ function SurahReader() {
               <bdi dir="ltr">{page + 1} / {pages.length}</bdi>
             </p>
           </div>
-          <div>
-            <button
-              onClick={() => setTajweedMode((v) => !v)}
-              className={cn(
-                "flex h-9 items-center gap-1 rounded-full px-3 text-[11px] font-extrabold text-primary-foreground transition-all",
-                tajweedMode ? "bg-white/40 ring-2 ring-white/70" : "bg-white/15"
-              )}
-              aria-label="تجويد"
-            >
-              <Palette className="h-4 w-4" />
-              <span>تجويد</span>
-            </button>
-          </div>
+          <div className="flex items-center gap-1">
+          <button onClick={() => emblaApi?.scrollPrev()} disabled={page === 0} className="flex h-9 w-9 items-center justify-center rounded-full bg-white/15 text-primary-foreground disabled:opacity-40" aria-label="الصفحة السابقة">
+            <ChevronRight className="h-5 w-5" />
+          </button>
+          <button
+            onClick={() => setTajweedMode((v) => !v)}
+            className={cn(
+              "flex h-9 items-center gap-1 rounded-full px-3 text-[11px] font-extrabold text-primary-foreground transition-all",
+              tajweedMode ? "bg-white/40 ring-2 ring-white/70" : "bg-white/15"
+            )}
+            aria-label="تجويد"
+          >
+            <Palette className="h-4 w-4" />
+            <span>تجويد</span>
+          </button>
+          <button onClick={() => emblaApi?.scrollNext()} disabled={page === pages.length - 1} className="flex h-9 w-9 items-center justify-center rounded-full bg-white/15 text-primary-foreground disabled:opacity-40" aria-label="الصفحة التالية">
+            <ChevronRight className="h-5 w-5 rotate-180" />
+          </button>
+        </div>
         </div>
 
         {/* Tajweed legend bar */}
         {tajweedMode && (
-          <div className="grid grid-cols-2 gap-x-2 gap-y-1 border-b px-3 py-2" style={{ background: "color-mix(in oklab, var(--gold) 6%, var(--card))" }}>
-            <button
-              onClick={() => setShowLegend(true)}
-              className="col-span-2 mx-auto flex items-center gap-1 rounded-full border bg-card px-2 py-1 text-[10px] font-bold"
-            >
-              <Info className="h-3 w-3" />
-              مفتاح الألوان
+          <div className="flex items-center gap-3 overflow-x-auto border-b px-3 py-2 hide-scrollbar" style={{ background: "color-mix(in oklab, var(--gold) 6%, var(--card))" }}>
+            <button onClick={() => setShowLegend(true)} className="flex shrink-0 items-center gap-1 rounded-full border bg-card px-3 py-1.5 text-[11px] font-bold">
+              <Info className="h-3.5 w-3.5" /> مفتاح الألوان
             </button>
             {tajweedLegend.map((l) => (
-              <div key={l.label} className="flex min-w-0 items-center gap-1 text-[10px] leading-tight">
-                <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ background: l.color }} />
+              <div key={l.label} className="flex shrink-0 items-center gap-1.5 text-[11px]">
+                <span className="h-3 w-3 rounded-full" style={{ background: l.color }} />
                 <span className="text-muted-foreground">{l.label}</span>
               </div>
             ))}
@@ -437,13 +405,11 @@ function SurahReader() {
           </button>
           {playing === null ? (
             <button
-              onClick={selectedAyahs.size > 0 ? playSelected : playFullSurah}
+              onClick={playFullSurah}
               className="flex items-center gap-1 rounded-full px-3 py-1.5 text-xs font-bold"
               style={{ background: "var(--gradient-primary)", color: "var(--primary-foreground)" }}
             >
-              <Play className="h-3.5 w-3.5" />
-              {selectedAyahs.size > 0 ? `تشغيل (${selectedAyahs.size})` : "تلاوة"}
-            </button>
+              <Play className="h-3.5 w-3.5" /> تلاوة
           ) : (
             <button
               onClick={stopPlay}
@@ -468,34 +434,38 @@ function SurahReader() {
         </div>
       </div>
 
-      {/* Ayah pages — horizontal carousel */}
-      <div
-        className="relative flex-1 overflow-hidden"
-        ref={emblaRef}
-      >
+      {/* Fixed Mushaf page images keep every line, verse marker, and margin in its canonical position. */}
+      <div className="relative min-h-0 flex-1 overflow-hidden" ref={emblaRef}>
         <div className="flex h-full">
           {pages.map((pg, idx) => (
-            <div key={idx} className="h-full min-w-0 shrink-0 grow-0 basis-full">
-              <div
-                className="mushaf-page relative h-full overflow-hidden p-2"
-              >
-                <MushafPage
-                  ayahs={pg.ayahs}
-                  fontSize={fontSize}
-                  showBismillah={idx === 0 && showBismillah}
-                  tajweedMode={tajweedMode}
-                  tajweedAyahs={tajweedAyahs}
-                  tajweedLoading={tajweedLoading}
-                  selectedAyahs={selectedAyahs}
-                  playing={playing}
-                  onToggleSelect={(n) => toggleSelect(n)}
-                />
+            <div key={pg.mushafPage} className="h-full min-w-0 shrink-0 grow-0 basis-full">
+              <div className="relative flex h-full w-full items-center justify-center px-1 py-2">
+                {idx === page && !pageImageLoaded && !pageImageError && (
+                  <Loader2 className="absolute h-8 w-8 animate-spin text-muted-foreground" aria-label="جارٍ تحميل صفحة المصحف" />
+                )}
+                {idx === page && pageImageError ? (
+                  <div className="mx-6 rounded-2xl border bg-card p-5 text-center text-sm shadow-lg">
+                    <p className="font-bold">تعذّر تحميل صورة الصفحة</p>
+                    <p className="mt-2 text-xs text-muted-foreground">تحقق من اتصال الإنترنت ثم أعد المحاولة.</p>
+                    <button onClick={() => setImageRetry((value) => value + 1)} className="mt-4 rounded-full px-4 py-2 text-xs font-bold text-primary-foreground" style={{ background: "var(--gradient-primary)" }}>إعادة المحاولة</button>
+                  </div>
+                ) : Math.abs(idx - page) <= 1 ? (
+                  <img
+                    key={`${pg.mushafPage}-${tajweedMode}-${idx === page ? imageRetry : 0}`}
+                    src={getMushafPageImageUrl(pg.mushafPage, tajweedMode)}
+                    alt={`صفحة المصحف ${pg.mushafPage} من سورة ${meta.name}`}
+                    className="h-full w-full select-none object-contain"
+                    draggable={false}
+                    loading={idx === page ? "eager" : "lazy"}
+                    decoding="async"
+                    onLoad={() => idx === page && setPageImageLoaded(true)}
+                    onError={() => idx === page && setPageImageError(true)}
+                  />
+                ) : null}
               </div>
             </div>
           ))}
         </div>
-
-
       </div>
 
       {/* Mushaf bottom strip — surah name | page number | juz */}
@@ -521,51 +491,22 @@ function SurahReader() {
         </span>
       </div>
 
-      {/* Floating action bar for selected ayahs */}
-      {selectedAyahs.size > 0 && (
-        <div
-          className="absolute bottom-12 left-1/2 z-50 flex -translate-x-1/2 items-center gap-1 rounded-full border px-2 py-1.5 shadow-2xl"
-          style={{ background: "var(--card)", borderColor: "var(--gold)" }}
-        >
-          <span className="px-2 text-[11px] font-extrabold" style={{ color: "var(--gold)" }}>
-            {selectedAyahs.size} محددة
-          </span>
-          {!isSurahMode && (
-            <button
-              onClick={() => playSelected()}
-              className="flex h-9 items-center gap-1 rounded-full px-3 text-[11px] font-bold"
-              style={{ background: "var(--gradient-primary)", color: "var(--primary-foreground)" }}
-            >
-              <Play className="h-3.5 w-3.5" /> تشغيل
-            </button>
-          )}
-          {selectedAyahs.size === 1 && (
-            <button
-              onClick={() => setTafsirAyah(Array.from(selectedAyahs)[0])}
-              className="flex h-9 items-center gap-1 rounded-full border bg-card px-3 text-[11px] font-bold"
-              style={{ borderColor: "var(--gold)", color: "var(--gold)" }}
-            >
-              <BookOpen className="h-3.5 w-3.5" /> تفسير
-            </button>
-          )}
-          {!isSurahMode && selectedAyahs.size === 1 && (
-            <button
-              onClick={() => downloadAyah(Array.from(selectedAyahs)[0])}
-              className="flex h-9 w-9 items-center justify-center rounded-full border bg-card"
-              aria-label="تحميل"
-            >
-              <Download className="h-3.5 w-3.5" />
-            </button>
-          )}
-          <button
-            onClick={() => setSelectedAyahs(new Set())}
-            className="flex h-9 w-9 items-center justify-center rounded-full bg-muted"
-            aria-label="إلغاء"
-          >
-            <X className="h-4 w-4" />
-          </button>
-        </div>
-      )}
+      {/* Reader actions remain one tap away, while page and audio controls stay visible. */}
+      <div className="absolute bottom-[4.75rem] left-4 z-[70]">
+        {showReaderActions && (
+          <div className="mb-3 grid w-52 gap-1.5 rounded-2xl border p-2 shadow-2xl" style={{ background: "var(--card)", borderColor: "var(--gold)" }}>
+            <button onClick={() => { playCurrentPage(); setShowReaderActions(false); }} className="flex items-center gap-2 rounded-xl px-3 py-2 text-right text-sm font-bold"><Play className="h-4 w-4" /> تلاوة الصفحة</button>
+            <button onClick={() => { playFullSurah(); setShowReaderActions(false); }} className="flex items-center gap-2 rounded-xl px-3 py-2 text-right text-sm font-bold"><BookOpen className="h-4 w-4" /> تلاوة السورة</button>
+            <button onClick={() => { setShowReciterSheet(true); setShowReaderActions(false); }} className="flex items-center gap-2 rounded-xl px-3 py-2 text-right text-sm font-bold"><Volume2 className="h-4 w-4" /> اختيار القارئ</button>
+            <button onClick={() => { setShowLegend(true); setShowReaderActions(false); }} className="flex items-center gap-2 rounded-xl px-3 py-2 text-right text-sm font-bold"><Palette className="h-4 w-4" /> مفتاح التجويد</button>
+            <button onClick={() => { setTafsirAyah(pages[page]?.ayahs[0]?.numberInSurah ?? null); setShowReaderActions(false); }} className="flex items-center gap-2 rounded-xl px-3 py-2 text-right text-sm font-bold"><BookOpen className="h-4 w-4" /> تفسير أول آية بالصفحة</button>
+            <button onClick={() => { void downloadAll(); setShowReaderActions(false); }} disabled={downloading !== null} className="flex items-center gap-2 rounded-xl px-3 py-2 text-right text-sm font-bold disabled:opacity-50"><Download className="h-4 w-4" /> تحميل السورة</button>
+          </div>
+        )}
+        <button onClick={() => setShowReaderActions((open) => !open)} className="flex h-14 w-14 items-center justify-center rounded-full shadow-xl" style={{ background: "var(--gradient-gold)", color: "var(--gold-foreground)" }} aria-label="أدوات القراءة">
+          {showReaderActions ? <X className="h-6 w-6" /> : <BookOpen className="h-6 w-6" />}
+        </button>
+      </div>
 
       {/* Reciter sheet */}
       {showReciterSheet && (
@@ -634,8 +575,8 @@ function SurahReader() {
                 </div>
               ))}
             </div>
-            <p className="mt-3 text-[11px] text-muted-foreground">
-              الألوان مطابقة لمصحف المدينة المنورة برواية حفص عن عاصم.
+            <p className="mt-3 text-[11px] leading-relaxed text-muted-foreground">
+              الألوان مطابقة لمصحف المدينة المنورة برواية حفص عن عاصم. صور الصفحات من مشروع <a className="underline" href="https://github.com/QuranHub/quran-pages-images" target="_blank" rel="noreferrer">QuranHub/quran-pages-images</a>.
             </p>
           </div>
         </div>
@@ -730,83 +671,4 @@ function SurahReader() {
   );
 }
 
-type MushafPageProps = {
-  ayahs: { numberInSurah: number; text: string; page?: number; juz?: number }[];
-  fontSize: number;
-  showBismillah: boolean;
-  tajweedMode: boolean;
-  tajweedAyahs: TajweedAyah[] | null;
-  tajweedLoading: boolean;
-  selectedAyahs: Set<number>;
-  playing: number | null;
-  onToggleSelect: (n: number) => void;
-};
 
-function MushafPage({
-  ayahs,
-  fontSize,
-  showBismillah,
-  tajweedMode,
-  tajweedAyahs,
-  tajweedLoading,
-  selectedAyahs,
-  playing,
-  onToggleSelect,
-}: MushafPageProps) {
-  return (
-    <div className="relative flex h-full flex-col">
-      {showBismillah && (
-        <p
-          className="font-quran mb-1.5 text-center"
-          style={{ fontSize: fontSize * 1.02, lineHeight: 1.3, color: "var(--gold)" }}
-        >
-          بِسْمِ اللَّهِ الرَّحْمَٰنِ الرَّحِيمِ
-        </p>
-      )}
-      <div
-        className="font-quran flex-1 overflow-y-auto hide-scrollbar text-right"
-        style={{ fontSize, lineHeight: 1.65, color: "var(--mushaf-ink)", textAlign: "right" as any }}
-      >
-        {tajweedMode && tajweedLoading && (
-          <span className="mb-2 inline-flex items-center gap-2 rounded-full border bg-card px-2 py-1 text-[10px] text-muted-foreground">
-            <Loader2 className="h-3 w-3 animate-spin" /> جاري تحميل التجويد...
-          </span>
-        )}
-        {ayahs.map((a) => {
-          const selected = selectedAyahs.has(a.numberInSurah);
-          const isPlaying = playing === a.numberInSurah;
-          const tajweedText = tajweedMode
-            ? tajweedAyahs?.find((t) => t.numberInSurah === a.numberInSurah)?.text
-            : undefined;
-          return (
-            <span key={a.numberInSurah}>
-              <span
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onToggleSelect(a.numberInSurah);
-                }}
-                className={cn(
-                  "rounded-md transition-colors",
-                  isPlaying && "bg-[color-mix(in_oklab,var(--gold)_28%,transparent)]",
-                  selected && !isPlaying && "bg-[color-mix(in_oklab,var(--primary)_18%,transparent)]"
-                )}
-              >
-                {tajweedText ? renderTajweed(tajweedText) : a.text}
-              </span>
-              <span
-                className="ayah-ornament tabular-nums"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onToggleSelect(a.numberInSurah);
-                }}
-                aria-label={`آية ${a.numberInSurah}`}
-              >
-                {a.numberInSurah}
-              </span>{" "}
-            </span>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
