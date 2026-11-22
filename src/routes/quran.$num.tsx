@@ -251,7 +251,7 @@ function SurahReader() {
       if (current.length > 0) groups.push({ ayahs: current, fontSize });
 
       // Rebalance verse boundaries in either direction so adjacent pages use their height evenly.
-      for (let round = 0; round < groups.length * 2; round += 1) {
+      for (let round = 0; round < 2; round += 1) {
         let changed = false;
         for (let index = 1; index < groups.length; index += 1) {
           const previous = groups[index - 1];
@@ -259,30 +259,41 @@ function SurahReader() {
           const previousHeight = measureGroup(previous.ayahs, fontSize, index === 1);
           const nextHeight = measureGroup(next.ayahs, fontSize, false);
           const currentDifference = Math.abs(previousHeight - nextHeight);
-          let best:
-            | { previousAyahs: QuranAyah[]; nextAyahs: QuranAyah[]; difference: number }
-            | undefined;
-
-          const consider = (previousAyahs: QuranAyah[], nextAyahs: QuranAyah[]) => {
-            const leftHeight = measureGroup(previousAyahs, fontSize, index === 1);
-            const rightHeight = measureGroup(nextAyahs, fontSize, false);
-            const difference = Math.abs(leftHeight - rightHeight);
-            if (
-              leftHeight <= targetHeight &&
-              rightHeight <= targetHeight &&
-              difference + targetHeight * 0.03 < currentDifference &&
-              (!best || difference < best.difference)
-            ) {
-              best = { previousAyahs, nextAyahs, difference };
-            }
-          };
+          const candidates: { previousAyahs: QuranAyah[]; nextAyahs: QuranAyah[] }[] = [];
 
           if (previous.ayahs.length > 1) {
-            consider(previous.ayahs.slice(0, -1), [previous.ayahs[previous.ayahs.length - 1], ...next.ayahs]);
+            candidates.push({
+              previousAyahs: previous.ayahs.slice(0, -1),
+              nextAyahs: [previous.ayahs[previous.ayahs.length - 1], ...next.ayahs],
+            });
           }
           if (next.ayahs.length > 1) {
-            consider([...previous.ayahs, next.ayahs[0]], next.ayahs.slice(1));
+            candidates.push({
+              previousAyahs: [...previous.ayahs, next.ayahs[0]],
+              nextAyahs: next.ayahs.slice(1),
+            });
           }
+
+          const best = candidates
+            .map((candidate) => ({
+              ...candidate,
+              previousHeight: measureGroup(candidate.previousAyahs, fontSize, index === 1),
+              nextHeight: measureGroup(candidate.nextAyahs, fontSize, false),
+            }))
+            .filter((candidate) => {
+              const difference = Math.abs(candidate.previousHeight - candidate.nextHeight);
+              return (
+                candidate.previousHeight <= targetHeight &&
+                candidate.nextHeight <= targetHeight &&
+                difference + targetHeight * 0.03 < currentDifference
+              );
+            })
+            .sort(
+              (a, b) =>
+                Math.abs(a.previousHeight - a.nextHeight) -
+                Math.abs(b.previousHeight - b.nextHeight)
+            )[0];
+
           if (best) {
             groups[index - 1] = { ...previous, ayahs: best.previousAyahs };
             groups[index] = { ...next, ayahs: best.nextAyahs };
