@@ -26,6 +26,7 @@ function QuranIndex() {
   const [cachedSurahs, setCachedSurahs] = useState<Set<number>>(new Set());
   const [offlineProgress, setOfflineProgress] = useState<{ done: number; total: number; current: string } | null>(null);
   const [allRecitersProgress, setAllRecitersProgress] = useState<{ done: number; total: number; current: string } | null>(null);
+  const [downloadError, setDownloadError] = useState<string | null>(null);
 
   useEffect(() => {
     getCachedAudioKeys().then(setCachedKeys);
@@ -103,23 +104,30 @@ function QuranIndex() {
   async function downloadOfflineQuran() {
     const controller = new AbortController();
     offlineCancelRef.current = controller;
-    const total = 604 + surahs.length;
+    const modes = ["clear", "tajweed"] as const;
+    const total = 604 * modes.length + surahs.length;
     let done = 0;
+    setDownloadError(null);
     try {
-      for (let page = 1; page <= 604; page++) {
-        if (controller.signal.aborted) return;
-        setOfflineProgress({ done, total, current: `صفحة المصحف ${page}` });
-        await downloadMushafPage(page, "tajweed", undefined, controller.signal);
-        done++;
+      for (const mode of modes) {
+        for (let page = 1; page <= 604; page++) {
+          if (controller.signal.aborted) return;
+          setOfflineProgress({ done, total, current: `${mode === "clear" ? "النسخة الواضحة" : "ألوان التجويد"} — صفحة ${page}` });
+          await downloadMushafPage(page, mode, undefined, controller.signal);
+          done++;
+        }
       }
       for (const surah of surahs) {
         if (controller.signal.aborted) return;
-        setOfflineProgress({ done, total, current: `سورة ${surah.name}` });
+        setOfflineProgress({ done, total, current: `نص سورة ${surah.name}` });
         await fetchSurahText(surah.number, controller.signal);
         done++;
       }
     } catch (e) {
-      if (!controller.signal.aborted) console.error("Offline Quran download failed", e);
+      if (!controller.signal.aborted) {
+        console.error("Offline Quran download failed", e);
+        setDownloadError("تعذّر تنزيل بعض الصفحات أو النص. أعد المحاولة لإكمال ما لم يُحفظ.");
+      }
     } finally {
       offlineCancelRef.current = null;
       setOfflineProgress(null);
@@ -160,11 +168,12 @@ function QuranIndex() {
           <div className="mb-2 flex items-center justify-between gap-2">
             <div>
               <p className="font-extrabold">المصحف دون إنترنت</p>
-              <p className="text-[11px] text-muted-foreground">604 صفحات تجويد + نص السور • نحو 75 م.ب</p>
-              <p className="mt-1 text-[10px] text-muted-foreground">المحفوظ: {cachedPages.size} / 604 صفحة • {cachedSurahs.size} / 114 سورة</p>
+              <p className="text-[11px] text-muted-foreground">النسخة الواضحة والتجويد + نص السور • نحو 260 م.ب</p>
+              <p className="mt-1 text-[10px] text-muted-foreground">المحفوظ: {cachedPages.size} / 1208 صفحة • {cachedSurahs.size} / 114 سورة</p>
             </div>
             <Download className="h-5 w-5 shrink-0" style={{ color: "var(--gold)" }} />
           </div>
+          {downloadError && <p role="alert" className="mb-2 text-xs font-bold text-destructive">{downloadError}</p>}
           {offlineProgress ? (
             <div className="space-y-2">
               <p className="truncate text-xs">{offlineProgress.current} • {offlineProgress.done} / {offlineProgress.total}</p>
@@ -228,7 +237,7 @@ function QuranIndex() {
       {bulkOpen && (
         <div
           className="fixed inset-0 z-[100] flex items-end justify-center bg-black/60"
-          onClick={() => !bulkProgress && setBulkOpen(false)}
+          onClick={() => !bulkProgress && !allRecitersProgress && setBulkOpen(false)}
         >
           <div
             onClick={(e) => e.stopPropagation()}
@@ -249,7 +258,7 @@ function QuranIndex() {
                 <button
                   key={r.id}
                   onClick={() => !bulkProgress && setBulkReciter(r.id)}
-                  disabled={!!bulkProgress}
+                  disabled={!!bulkProgress || !!allRecitersProgress}
                   className="flex w-full items-center gap-3 rounded-2xl border p-3 text-right transition-all disabled:opacity-50"
                   style={{
                     background: bulkReciter === r.id ? "color-mix(in oklab, var(--gold) 12%, transparent)" : "transparent",
