@@ -80,8 +80,13 @@ function SurahReader() {
   const longPressTimerRef = useRef<number | null>(null);
   const handledLongPressRef = useRef(false);
 
-  selectedAyahsRef.current = selectedAyahs;
-  repeatSelectedRef.current = repeatSelectedAyahs;
+  useEffect(() => {
+    selectedAyahsRef.current = selectedAyahs;
+  }, [selectedAyahs]);
+
+  useEffect(() => {
+    repeatSelectedRef.current = repeatSelectedAyahs;
+  }, [repeatSelectedAyahs]);
 
   const [emblaRef, emblaApi] = useEmblaCarousel({ direction: "rtl", align: "center", loop: false });
   const [page, setPage] = useState(0);
@@ -554,7 +559,7 @@ function SurahReader() {
                     <p className="mt-2 text-xs text-muted-foreground">الصفحة غير محفوظة بعد. اتصل بالإنترنت لتنزيلها أو نزّل المصحف من صفحة السور.</p>
                     <button onClick={() => setImageRetry((value) => value + 1)} className="mt-4 rounded-full px-4 py-2 text-xs font-bold text-primary-foreground" style={{ background: "var(--gradient-primary)" }}>إعادة المحاولة</button>
                   </div>
-                ) : Math.abs(idx - page) <= 1 ? (
+                ) : Math.abs(idx - page) <= 1 && (idx !== page || !!pageImageSrc) ? (
                   <img
                     key={`${pg.mushafPage}-${tajweedMode}-${idx === page ? imageRetry : 0}`}
                     src={idx === page ? pageImageSrc : getMushafPageImageUrl(pg.mushafPage, tajweedMode ? "tajweed" : "clear")}
@@ -689,6 +694,7 @@ function SurahReader() {
                     setReciter(r.id);
                     setShowReciterSheet(false);
                     stopPlay();
+                    setAudioError(null);
                   }}
                   className={cn(
                     "flex w-full items-center gap-3 rounded-2xl border p-3 text-right transition-all",
