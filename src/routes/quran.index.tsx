@@ -17,7 +17,7 @@ export const Route = createFileRoute("/quran/")({
 function normalizeSurahSearchText(value: string) {
   return value
     .normalize("NFKD")
-    .replace(/[\\u0610-\\u061A\\u064B-\\u065F\\u0670\\u06D6-\\u06ED\\u08D3-\\u08FF\\u0640]/g, "")
+    .replace(/[\u0610-\u061A\u064B-\u065F\u0670\u06D6-\u06ED\u08D3-\u08FF\u0640]/g, "")
     .replace(/[أإآٱ]/g, "ا")
     .replace(/ى/g, "ي")
     .replace(/ؤ/g, "و")
@@ -26,9 +26,9 @@ function normalizeSurahSearchText(value: string) {
     .replace(/[٠-٩]/g, (digit) => String(digit.charCodeAt(0) - 0x0660))
     .replace(/[۰-۹]/g, (digit) => String(digit.charCodeAt(0) - 0x06f0))
     .toLocaleLowerCase()
-    .replace(/[^a-z0-9\\u0600-\\u06ff]+/g, " ")
+    .replace(/[^a-z0-9\u0600-\u06ff]+/g, " ")
     .trim()
-    .replace(/\\s+/g, " ");
+    .replace(/\s+/g, " ");
 }
 
 const surahSearchIndex = surahs.map((surah) => ({
