@@ -57,7 +57,7 @@ function SurahReader() {
   const search = Route.useSearch();
   const [ayahs, setAyahs] = useState<QuranAyah[] | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const fontSize = 22;
+  const fontSize = 18;
   const [reciter, setReciter] = useState<ReciterId>("ar.yasser");
   const [playing, setPlaying] = useState<number | null>(null);
   const [downloading, setDownloading] = useState<{ ayah: number | "all"; pct: number } | null>(null);
@@ -171,7 +171,7 @@ function SurahReader() {
     if (!carousel || !measurer) return;
 
     const showBismillah = meta.number !== 1 && meta.number !== 9;
-    const baseLineHeight = 1.65;
+    const baseLineHeight = 1.55;
     const escapeHtml = (value: string) =>
       value.replace(/[&<>"]/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[char]!));
 
@@ -190,8 +190,28 @@ function SurahReader() {
         ? `<div class="font-quran" style="font-size:${size * 1.02}px;line-height:1.3;text-align:center;margin-bottom:6px;color:var(--gold);">بِسْمِ اللَّهِ الرَّحْمَٰنِ الرَّحِيمِ</div>`
         : "";
       const body = group.map(renderAyahForMeasure).join("");
-      measurer.innerHTML = `${bismillah}<div class="font-quran" style="font-size:${size}px;line-height:${baseLineHeight};text-align:right;color:var(--mushaf-ink);">${body}</div>`;
+      measurer.innerHTML = `${bismillah}<div data-quran-measure-body class="font-quran" style="font-size:${size}px;line-height:${baseLineHeight};text-align:right;color:var(--mushaf-ink);">${body}</div>`;
       return measurer.scrollHeight;
+    };
+
+    const countMeasuredLines = () => {
+      const body = measurer.querySelector<HTMLElement>("[data-quran-measure-body]");
+      if (!body) return 1;
+      const walker = document.createTreeWalker(body, NodeFilter.SHOW_TEXT);
+      const range = document.createRange();
+      const lineTops = new Set<number>();
+      let node = walker.nextNode();
+      while (node) {
+        if (!node.parentElement?.closest(".ayah-ornament")) {
+          range.selectNodeContents(node);
+          for (const rect of Array.from(range.getClientRects())) {
+            if (rect.width > 0 && rect.height > 0) lineTops.add(Math.round(rect.top / 2));
+          }
+        }
+        node = walker.nextNode();
+      }
+      range.detach();
+      return Math.max(1, lineTops.size);
     };
 
     let rafId = 0;
@@ -230,48 +250,63 @@ function SurahReader() {
       }
       if (current.length > 0) groups.push({ ayahs: current, fontSize });
 
-      // Rebalance short pages without moving text across different font sizes.
-      for (let index = 1; index < groups.length; index += 1) {
-        const previous = groups[index - 1];
-        const next = groups[index];
-        if (
-          previous.fontSize !== fontSize ||
-          next.fontSize !== fontSize ||
-          previous.ayahs.length < 2 ||
-          measureGroup(next.ayahs, fontSize, false) >= targetHeight * 0.72
-        ) continue;
+      // Rebalance verse boundaries in either direction so adjacent pages use their height evenly.
+      for (let round = 0; round < groups.length * 2; round += 1) {
+        let changed = false;
+        for (let index = 1; index < groups.length; index += 1) {
+          const previous = groups[index - 1];
+          const next = groups[index];
+          const previousHeight = measureGroup(previous.ayahs, fontSize, index === 1);
+          const nextHeight = measureGroup(next.ayahs, fontSize, false);
+          const currentDifference = Math.abs(previousHeight - nextHeight);
+          let best:
+            | { previousAyahs: QuranAyah[]; nextAyahs: QuranAyah[]; difference: number }
+            | undefined;
 
-        const movedAyah = previous.ayahs[previous.ayahs.length - 1];
-        const balancedPrevious = previous.ayahs.slice(0, -1);
-        const balancedNext = [movedAyah, ...next.ayahs];
-        const previousHeight = measureGroup(previous.ayahs, fontSize, index === 1);
-        const nextHeight = measureGroup(next.ayahs, fontSize, false);
-        const balancedPreviousHeight = measureGroup(balancedPrevious, fontSize, index === 1);
-        const balancedNextHeight = measureGroup(balancedNext, fontSize, false);
+          const consider = (previousAyahs: QuranAyah[], nextAyahs: QuranAyah[]) => {
+            const leftHeight = measureGroup(previousAyahs, fontSize, index === 1);
+            const rightHeight = measureGroup(nextAyahs, fontSize, false);
+            const difference = Math.abs(leftHeight - rightHeight);
+            if (
+              leftHeight <= targetHeight &&
+              rightHeight <= targetHeight &&
+              difference + targetHeight * 0.03 < currentDifference &&
+              (!best || difference < best.difference)
+            ) {
+              best = { previousAyahs, nextAyahs, difference };
+            }
+          };
 
-        if (
-          balancedPreviousHeight <= targetHeight &&
-          balancedNextHeight <= targetHeight &&
-          Math.min(balancedPreviousHeight, balancedNextHeight) >
-            Math.min(previousHeight, nextHeight) + targetHeight * 0.06
-        ) {
-          groups[index - 1] = { ...previous, ayahs: balancedPrevious };
-          groups[index] = { ...next, ayahs: balancedNext };
+          if (previous.ayahs.length > 1) {
+            consider(previous.ayahs.slice(0, -1), [previous.ayahs[previous.ayahs.length - 1], ...next.ayahs]);
+          }
+          if (next.ayahs.length > 1) {
+            consider([...previous.ayahs, next.ayahs[0]], next.ayahs.slice(1));
+          }
+          if (best) {
+            groups[index - 1] = { ...previous, ayahs: best.previousAyahs };
+            groups[index] = { ...next, ayahs: best.nextAyahs };
+            changed = true;
+          }
         }
+        if (!changed) break;
       }
 
       setPages(
         groups.map(({ ayahs: group, fontSize: pageFontSize }, index) => {
-          const height = measureGroup(group, pageFontSize, index === 0);
+          measureGroup(group, pageFontSize, index === 0);
+          const lineCount = countMeasuredLines();
           const bismillahHeight = index === 0 && showBismillah ? pageFontSize * 1.35 : 0;
-          const textHeight = Math.max(pageFontSize * baseLineHeight, height - bismillahHeight);
-          const lineCount = Math.max(1, Math.ceil(textHeight / (pageFontSize * baseLineHeight)));
-          const spreadLineHeight = targetHeight / lineCount / pageFontSize;
+          const textAvailableHeight = Math.max(
+            pageFontSize * baseLineHeight,
+            targetHeight - bismillahHeight
+          );
+          const spreadLineHeight = textAvailableHeight / lineCount / pageFontSize;
 
           return {
             ayahs: group,
             fontSize: pageFontSize,
-            lineHeight: Math.max(baseLineHeight, Math.min(3.2, spreadLineHeight)),
+            lineHeight: Math.max(baseLineHeight, Math.min(2.05, spreadLineHeight)),
           };
         })
       );
@@ -511,8 +546,8 @@ function SurahReader() {
           <div className="flex-1 text-center text-primary-foreground">
             <p className="text-base font-extrabold font-quran">سورة {meta.name}</p>
             <p className="text-[10px] opacity-80">
-              {currentMushafPage ? `صفحة المصحف ${currentMushafPage} • ` : ""}
-              {page + 1} / {pages.length}
+              {currentMushafPage ? <>صفحة المصحف <bdi dir="ltr">{currentMushafPage}</bdi> • </> : ""}
+              <bdi dir="ltr">{page + 1} / {pages.length}</bdi>
             </p>
           </div>
           <div>
@@ -532,18 +567,18 @@ function SurahReader() {
 
         {/* Tajweed legend bar */}
         {tajweedMode && (
-          <div className="flex items-center gap-2 overflow-x-auto border-b px-3 py-2 hide-scrollbar" style={{ background: "color-mix(in oklab, var(--gold) 6%, var(--card))" }}>
+          <div className="grid grid-cols-2 gap-x-2 gap-y-1 border-b px-3 py-2" style={{ background: "color-mix(in oklab, var(--gold) 6%, var(--card))" }}>
             <button
               onClick={() => setShowLegend(true)}
-              className="flex shrink-0 items-center gap-1 rounded-full border bg-card px-2 py-1 text-[10px] font-bold"
+              className="col-span-2 mx-auto flex items-center gap-1 rounded-full border bg-card px-2 py-1 text-[10px] font-bold"
             >
               <Info className="h-3 w-3" />
               مفتاح الألوان
             </button>
             {tajweedLegend.map((l) => (
-              <div key={l.label} className="flex shrink-0 items-center gap-1 text-[10px]">
-                <span className="h-2.5 w-2.5 rounded-full" style={{ background: l.color }} />
-                <span className="whitespace-nowrap text-muted-foreground">{l.label}</span>
+              <div key={l.label} className="flex min-w-0 items-center gap-1 text-[10px] leading-tight">
+                <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ background: l.color }} />
+                <span className="text-muted-foreground">{l.label}</span>
               </div>
             ))}
           </div>
@@ -628,7 +663,7 @@ function SurahReader() {
           className="font-quran pointer-events-none invisible absolute left-0 top-0 text-right"
           style={{
             fontSize,
-            lineHeight: 1.65,
+            lineHeight: 1.55,
             width: "calc(100% - 16px)",
             margin: 8,
             textAlign: "right" as any,
