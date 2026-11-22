@@ -27,7 +27,15 @@ function SettingsPage() {
 
   useEffect(() => {
     refresh();
-    getSetting<number>("reminderMin").then((v) => v && setReminderMin(v));
+    getSetting<number>("reminderMin").then((value) => {
+      const reminder = value === 5 || value === 15 || value === 30 ? value : 15;
+      setReminderMin(reminder);
+      if (value !== reminder) {
+        void saveSetting("reminderMin", reminder).then(() => {
+          if (enabled) return scheduleAll(reminder);
+        });
+      }
+    });
   }, []);
 
   async function clearAudio() {
