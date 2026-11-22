@@ -10,13 +10,14 @@ import {
   getAyahAudioUrl,
   downloadAyahAudio,
   getAyahAudioBlob,
+  audioKey,
   getFullSurahAudioUrl,
   getFullSurahBlob,
   getMushafPageImageUrl,
   downloadMushafPage,
   downloadFullSurah,
 } from "@/lib/quran-api";
-import { saveReadingProgress } from "@/lib/db";
+import { getCachedAudioKeys, saveReadingProgress } from "@/lib/db";
 import { cn } from "@/lib/utils";
 import { recordQuranPageRead, recordSurahCompleted } from "@/lib/achievements";
 
@@ -74,6 +75,8 @@ function SurahReader() {
 
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const audioObjectUrlRef = useRef<string | null>(null);
+  const audioFallbackRef = useRef<WeakSet<HTMLAudioElement>>(new WeakSet());
+  const cachedAudioKeysRef = useRef<Set<string>>(new Set());
   const playQueueRef = useRef<number[]>([]);
   const selectedAyahsRef = useRef<number[]>([]);
   const repeatSelectedRef = useRef(false);
@@ -144,6 +147,16 @@ function SurahReader() {
     };
   }, [emblaApi]);
 
+
+  useEffect(() => {
+    let active = true;
+    getCachedAudioKeys().then((keys) => {
+      if (active) cachedAudioKeysRef.current = keys;
+    });
+    return () => {
+      active = false;
+    };
+  }, [reciter, meta.number]);
 
   // Stop audio and release local media URLs when leaving the reader.
   useEffect(() => {
@@ -254,12 +267,30 @@ function SurahReader() {
   }
 
   async function fallBackToCachedAudio(audio: HTMLAudioElement, ayah?: number) {
-    if (audioRef.current !== audio || audio.src.startsWith("blob:")) return;
-    const blob = ayah === undefined
+    if (audioRef.current !== audio || audio.src.startsWith("blob:") || audioFallbackRef.current.has(audio)) return;
+    audioFallbackRef.current.add(audio);
+    let blob = ayah === undefined
       ? await getFullSurahBlob(reciter, meta.number)
       : await getAyahAudioBlob(reciter, meta.number, ayah);
+
+    // Some Android WebViews fail to stream remote MP3s directly. Download the
+    // requested track once and retry from a local Blob URL.
+    if (!blob && navigator.onLine) {
+      try {
+        blob = ayah === undefined
+          ? await downloadFullSurah(reciter, meta.number)
+          : await downloadAyahAudio(reciter, meta.number, ayah);
+        cachedAudioKeysRef.current.add(audioKey(reciter, meta.number, ayah));
+      } catch (downloadError) {
+        console.error("Audio fallback download failed", downloadError);
+      }
+    }
+
     if (!blob || audioRef.current !== audio) {
-      setAudioError("تعذّر تشغيل هذا التسجيل. تحقق من الاتصال أو نزّله مسبقًا للاستماع دون إنترنت.");
+      const code = audio.error?.code;
+      setAudioError(code
+        ? `تعذّر تشغيل التلاوة (رمز المشغّل ${code}). أعد المحاولة أو نزّل السورة أولًا.`
+        : "تعذّر تشغيل التلاوة. تحقق من الاتصال أو نزّل السورة للاستماع دون إنترنت.");
       setPlaying(null);
       playQueueRef.current = [];
       return;
@@ -269,8 +300,9 @@ function SurahReader() {
     audioObjectUrlRef.current = localUrl;
     audio.src = localUrl;
     audio.load();
-    audio.play().catch(() => {
-      setAudioError("تعذّر بدء تشغيل الملف المحفوظ.");
+    audio.play().catch((playError) => {
+      console.error("Cached audio playback failed", playError);
+      setAudioError("حُفظ ملف التلاوة لكن تعذّر تشغيله على هذا الجهاز.");
       setPlaying(null);
     });
   }
@@ -287,6 +319,7 @@ function SurahReader() {
     setPlaying(ayah);
     const audio = new Audio(src);
     audio.preload = "auto";
+    audio.crossOrigin = "anonymous";
     audioRef.current = audio;
     audio.onended = () => {
       clearAudioObjectUrl();
@@ -303,7 +336,10 @@ function SurahReader() {
     };
     audio.onerror = () => void fallBackToCachedAudio(audio, ayah);
     // Start inside the tap handler so Android WebView keeps the user's playback gesture.
-    audio.play().catch(() => void fallBackToCachedAudio(audio, ayah));
+    audio.play().catch((playError) => {
+      console.error("Ayah playback failed", playError);
+      void fallBackToCachedAudio(audio, ayah);
+    });
   }
 
   function playFullSurahFile() {
@@ -318,6 +354,7 @@ function SurahReader() {
     setPlaying(-1);
     const audio = new Audio(src);
     audio.preload = "auto";
+    audio.crossOrigin = "anonymous";
     audioRef.current = audio;
     audio.onended = () => {
       clearAudioObjectUrl();
@@ -325,7 +362,10 @@ function SurahReader() {
       setPlaying(null);
     };
     audio.onerror = () => void fallBackToCachedAudio(audio);
-    audio.play().catch(() => void fallBackToCachedAudio(audio));
+    audio.play().catch((playError) => {
+      console.error("Full surah playback failed", playError);
+      void fallBackToCachedAudio(audio);
+    });
   }
 
   function stopPlay() {
@@ -335,7 +375,9 @@ function SurahReader() {
   }
 
   function playFullSurah() {
-    if (getFullSurahAudioUrl(reciter, meta.number)) {
+    const selectedReciter = reciters.find((item) => item.id === reciter);
+    const hasDownloadedSurah = cachedAudioKeysRef.current.has(audioKey(reciter, meta.number));
+    if (selectedReciter?.mode === "surah" || hasDownloadedSurah) {
       playQueueRef.current = [];
       playFullSurahFile();
       return;
@@ -349,8 +391,9 @@ function SurahReader() {
   }
 
   function playCurrentPage() {
+    const selectedReciter = reciters.find((item) => item.id === reciter);
     const list = (pages[page]?.ayahs ?? []).map((a) => a.numberInSurah);
-    if (list.length && getAyahAudioUrl(reciter, meta.number, list[0])) {
+    if (selectedReciter?.mode !== "surah" && list.length && getAyahAudioUrl(reciter, meta.number, list[0])) {
       const first = list.shift()!;
       playQueueRef.current = list;
       playAyah(first);
@@ -414,6 +457,7 @@ function SurahReader() {
     try {
       if (getFullSurahAudioUrl(reciter, meta.number)) {
         await downloadFullSurah(reciter, meta.number, (pct) => setDownloading({ ayah: "all", pct }));
+        cachedAudioKeysRef.current.add(audioKey(reciter, meta.number));
       } else {
         for (let i = 0; i < ayahs.length; i++) {
           const a = ayahs[i].numberInSurah;
@@ -451,7 +495,7 @@ function SurahReader() {
   return (
     <div className="fixed inset-0 z-40 flex flex-col" style={{ background: "var(--mushaf-paper)", paddingTop: "env(safe-area-inset-top)", paddingBottom: "env(safe-area-inset-bottom)" }}>
       {/* Reader controls stay visible while reading. */}
-      <div className="relative z-20 shrink-0">
+      <div className="shrink-0">
         <div
           className="flex items-center justify-between gap-2 border-b px-3 py-3"
           style={{ background: "var(--gradient-hero)" }}
@@ -552,11 +596,11 @@ function SurahReader() {
       {audioError && <div role="alert" className="relative z-30 mx-3 mt-2 rounded-xl border border-destructive/30 bg-destructive/10 px-3 py-2 text-xs font-bold text-destructive">{audioError}</div>}
 
       {/* Page canvas fills the display behind the fixed reader controls. */}
-      <div className="absolute inset-0 z-0 overflow-hidden" ref={emblaRef}>
+      <div className="relative min-h-0 flex-1 overflow-hidden" ref={emblaRef}>
         <div className="flex h-full w-full">
           {pages.map((pg, idx) => (
             <div key={pg.mushafPage} className="h-full min-w-0 shrink-0 grow-0 basis-full">
-              <div className="relative flex h-full w-full items-center justify-center">
+              <div className="relative flex h-full w-full items-center justify-center px-1 py-2">
                 {idx === page && !pageImageLoaded && !pageImageError && (
                   <Loader2 className="absolute h-8 w-8 animate-spin text-muted-foreground" aria-label="جارٍ تحميل صفحة المصحف" />
                 )}
@@ -585,11 +629,9 @@ function SurahReader() {
         </div>
       </div>
 
-      <div className="relative z-10 min-h-0 flex-1 pointer-events-none" />
-
       {/* Mushaf bottom strip — surah name | page number | juz */}
       <div
-        className="relative z-20 flex items-center justify-between border-t px-5 py-2 text-xs font-bold"
+        className="flex items-center justify-between border-t px-5 py-2 text-xs font-bold"
         style={{
           background: "color-mix(in oklab, var(--mushaf-paper) 92%, var(--mushaf-edge))",
           color: "var(--mushaf-ink)",
