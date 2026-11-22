@@ -38,7 +38,7 @@ function stripLeadingBismillah(text: string): string {
   return text;
 }
 
-export async function fetchSurahText(surahNumber: number): Promise<Ayah[]> {
+export async function fetchSurahText(surahNumber: number, signal?: AbortSignal): Promise<Ayah[]> {
   const shouldStrip = surahNumber !== 1 && surahNumber !== 9;
 
   const cached = await getSurah(surahNumber);
@@ -56,7 +56,7 @@ export async function fetchSurahText(surahNumber: number): Promise<Ayah[]> {
     return cached.ayahs;
   }
 
-  const res = await fetch(`https://api.alquran.cloud/v1/surah/${surahNumber}/quran-uthmani`);
+  const res = await fetch(`https://api.alquran.cloud/v1/surah/${surahNumber}/quran-uthmani`, { signal });
   const json = await res.json();
   const ayahs: Ayah[] = json.data.ayahs.map((a: any, idx: number) => {
     let text: string = a.text;
