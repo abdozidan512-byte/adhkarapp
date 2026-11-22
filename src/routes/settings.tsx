@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
-import { Bell, Moon, Sun, Smartphone, Trash2, HardDrive, Download, ExternalLink } from "lucide-react";
+import { Bell, Moon, Sun, Trash2, HardDrive } from "lucide-react";
 import { PageHeader } from "@/components/PageHeader";
 import { useTheme } from "@/contexts/ThemeContext";
 import { listAudio, deleteAudio, getSetting, saveSetting } from "@/lib/db";
@@ -125,7 +125,7 @@ function SettingsPage() {
             <div>
               <p className="mb-2 font-bold">⏱️ مدة التذكير قبل الصلاة</p>
               <div className="flex gap-2">
-                {[5, 10, 15, 30].map((v) => (
+                {[5, 15, 30].map((v) => (
                   <button
                     key={v}
                     onClick={() => saveReminder(v)}
@@ -189,48 +189,6 @@ function SettingsPage() {
             ) : null
           }
         />
-
-        {/* Install */}
-        <div className="rounded-3xl border p-5" style={{ background: "var(--gradient-card)", boxShadow: "var(--shadow-soft)" }}>
-          <div className="flex items-center gap-3">
-            <div
-              className="flex h-12 w-12 items-center justify-center rounded-2xl"
-              style={{ background: "var(--gradient-gold)", color: "var(--gold-foreground)" }}
-            >
-              <Smartphone className="h-6 w-6" />
-            </div>
-            <div className="flex-1">
-              <p className="font-extrabold">تثبيت التطبيق على الجوال</p>
-              <p className="text-xs text-muted-foreground">يعمل بدون إنترنت بعد التثبيت</p>
-            </div>
-          </div>
-          <div className="mt-4 space-y-2 text-sm">
-            <p className="font-bold">📱 طريقة 1: تثبيت كتطبيق ويب (الأسهل)</p>
-            <ul className="space-y-1 pr-4 text-xs text-muted-foreground">
-              <li>• <b>Chrome (أندرويد):</b> اضغط القائمة (⋮) ← "تثبيت التطبيق"</li>
-              <li>• <b>Safari (آيفون):</b> اضغط أيقونة المشاركة ← "إضافة إلى الشاشة الرئيسية"</li>
-            </ul>
-
-            <p className="mt-4 font-bold">📦 طريقة 2: ملف APK لأندرويد</p>
-            <ul className="space-y-1 pr-4 text-xs text-muted-foreground">
-              <li>1. انشر التطبيق من زر "Publish" داخل لوفابل.</li>
-              <li>2. افتح الرابط <a href="https://www.pwabuilder.com" target="_blank" rel="noreferrer" className="font-bold text-primary underline">PWABuilder.com</a> والصق رابط التطبيق.</li>
-              <li>3. اضغط "Package for stores" ← Android ← حمّل ملف APK.</li>
-              <li>4. ثبّت الملف على جوالك (فعّل "تثبيت من مصادر غير معروفة").</li>
-            </ul>
-            <a
-              href="https://www.pwabuilder.com"
-              target="_blank"
-              rel="noreferrer"
-              className="mt-3 flex items-center justify-center gap-2 rounded-2xl py-3 text-sm font-bold"
-              style={{ background: "var(--gradient-primary)", color: "var(--primary-foreground)" }}
-            >
-              <Download className="h-4 w-4" />
-              فتح PWABuilder
-              <ExternalLink className="h-3.5 w-3.5" />
-            </a>
-          </div>
-        </div>
 
         <p className="py-6 text-center text-xs text-muted-foreground">
           صُنع بحب ❤️ — تطبيق نور
