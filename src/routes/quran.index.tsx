@@ -1,5 +1,5 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import { Search, ChevronLeft, BookOpen, Download, Loader2, Check, X } from "lucide-react";
 import { surahs, reciters, type ReciterId } from "@/data/surahs";
 import { PageHeader } from "@/components/PageHeader";
@@ -16,6 +16,7 @@ export const Route = createFileRoute("/quran/")({
 
 function QuranIndex() {
   const [q, setQ] = useState("");
+  const deferredQuery = useDeferredValue(q);
   const [bulkOpen, setBulkOpen] = useState(false);
   const [bulkReciter, setBulkReciter] = useState<ReciterId>("ar.yasser");
   const [bulkProgress, setBulkProgress] = useState<{ done: number; total: number; current: string } | null>(null);
@@ -32,11 +33,11 @@ function QuranIndex() {
     getCachedAudioKeys().then(setCachedKeys);
     getCachedMushafPageKeys().then(setCachedPages);
     getCachedSurahNumbers().then(setCachedSurahs);
-  }, [bulkProgress]);
+  }, []);
 
   const filtered = useMemo(() => {
-    if (!q.trim()) return surahs;
-    const term = q.trim();
+    if (!deferredQuery.trim()) return surahs;
+    const term = deferredQuery.trim().toLocaleLowerCase();
     return surahs.filter(
       (s) =>
         s.name.includes(term) ||
@@ -191,6 +192,11 @@ function QuranIndex() {
         >
           <Search className="h-4 w-4 text-muted-foreground" />
           <input
+            type="search"
+            inputMode="search"
+            autoComplete="off"
+            spellCheck={false}
+            aria-label="البحث عن سورة أو رقمها"
             value={q}
             onChange={(e) => setQ(e.target.value)}
             placeholder="ابحث عن سورة أو رقم..."
