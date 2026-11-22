@@ -102,9 +102,16 @@ function SurahReader() {
     };
   }, [meta.number]);
 
-  // Reset the tafsir cache when changing surahs.
+  // Clear page-scoped selections when opening another surah.
   useEffect(() => {
+    setSelectedAyahs([]);
+    setRepeatSelectedAyahs(false);
+    setShowAyahSelection(false);
+    setTafsirAyah(null);
+    setTafsirSelection(false);
     setTafsirData(null);
+    setAudioError(null);
+    playQueueRef.current = [];
   }, [meta.number]);
 
   // Load tafsir when sheet opens or edition changes
