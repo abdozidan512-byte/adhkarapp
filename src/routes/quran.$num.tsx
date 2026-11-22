@@ -1,5 +1,5 @@
 import { createFileRoute, Link, notFound } from "@tanstack/react-router";
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import useEmblaCarousel from "embla-carousel-react";
 import { ChevronRight, Play, Pause, Download, Check, Loader2, Volume2, Palette, Info, BookOpen, X } from "lucide-react";
 import { surahs, reciters, type ReciterId } from "@/data/surahs";
@@ -44,7 +44,7 @@ export const Route = createFileRoute("/quran/$num")({
 });
 
 type QuranAyah = { numberInSurah: number; text: string; page?: number; juz?: number };
-type QuranPage = { ayahs: QuranAyah[]; lineHeight: number; fontSize: number };
+type QuranPage = { ayahs: QuranAyah[]; mushafPage: number };
 
 const TAJWEED_MARK_RE = /\[[a-z](?::\d+)?\[([^\]]*)\]/g;
 
@@ -57,7 +57,7 @@ function SurahReader() {
   const search = Route.useSearch();
   const [ayahs, setAyahs] = useState<QuranAyah[] | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const fontSize = 18;
+  const fontSize = 24;
   const [reciter, setReciter] = useState<ReciterId>("ar.yasser");
   const [playing, setPlaying] = useState<number | null>(null);
   const [downloading, setDownloading] = useState<{ ayah: number | "all"; pct: number } | null>(null);
@@ -154,194 +154,25 @@ function SurahReader() {
     };
   }, []);
 
-  // Measure the reader area after the fixed controls and paginate against that height.
-  // This keeps verses visible at every zoom level and balances short pages.
-  const carouselRef = useRef<HTMLDivElement | null>(null);
-  const measureRef = useRef<HTMLDivElement | null>(null);
-  const [pages, setPages] = useState<QuranPage[]>([]);
+  // Build pages from standard Madani Mushaf page numbers returned with each ayah.
+  // Stable page boundaries prevent short, arbitrary pages caused by viewport measurements.
+  const pages = useMemo<QuranPage[]>(() => {
+    if (!ayahs) return [];
+    const grouped: QuranPage[] = [];
 
-  useLayoutEffect(() => {
-    if (!ayahs) {
-      setPages([]);
-      return;
+    for (const ayah of ayahs) {
+      const fallbackPage = Math.floor((ayah.numberInSurah - 1) / 8) + 1;
+      const mushafPage = ayah.page ?? fallbackPage;
+      const current = grouped[grouped.length - 1];
+      if (current?.mushafPage === mushafPage) {
+        current.ayahs.push(ayah);
+      } else {
+        grouped.push({ mushafPage, ayahs: [ayah] });
+      }
     }
 
-    const carousel = carouselRef.current;
-    const measurer = measureRef.current;
-    if (!carousel || !measurer) return;
-
-    const showBismillah = meta.number !== 1 && meta.number !== 9;
-    const baseLineHeight = 1.55;
-    const escapeHtml = (value: string) =>
-      value.replace(/[&<>"]/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[char]!));
-
-    const visualText = (ayah: QuranAyah) => {
-      const tajweedText = tajweedMode
-        ? tajweedAyahs?.find((item) => item.numberInSurah === ayah.numberInSurah)?.text
-        : undefined;
-      return tajweedText ? stripTajweedMarks(tajweedText) : ayah.text;
-    };
-
-    const renderAyahForMeasure = (ayah: QuranAyah) =>
-      `${escapeHtml(visualText(ayah))}<span class="ayah-ornament tabular-nums">${ayah.numberInSurah}</span> `;
-
-    const measureGroup = (group: QuranAyah[], size: number, firstPage: boolean) => {
-      const bismillah = firstPage && showBismillah
-        ? `<div class="font-quran" style="font-size:${size * 1.02}px;line-height:1.3;text-align:center;margin-bottom:6px;color:var(--gold);">بِسْمِ اللَّهِ الرَّحْمَٰنِ الرَّحِيمِ</div>`
-        : "";
-      const body = group.map(renderAyahForMeasure).join("");
-      measurer.innerHTML = `${bismillah}<div data-quran-measure-body class="font-quran" style="font-size:${size}px;line-height:${baseLineHeight};text-align:right;color:var(--mushaf-ink);">${body}</div>`;
-      return measurer.scrollHeight;
-    };
-
-    const countMeasuredLines = () => {
-      const body = measurer.querySelector<HTMLElement>("[data-quran-measure-body]");
-      if (!body) return 1;
-      const walker = document.createTreeWalker(body, NodeFilter.SHOW_TEXT);
-      const range = document.createRange();
-      const lineTops = new Set<number>();
-      let node = walker.nextNode();
-      while (node) {
-        if (!node.parentElement?.closest(".ayah-ornament")) {
-          range.selectNodeContents(node);
-          for (const rect of Array.from(range.getClientRects())) {
-            if (rect.width > 0 && rect.height > 0) lineTops.add(Math.round(rect.top / 2));
-          }
-        }
-        node = walker.nextNode();
-      }
-      range.detach();
-      return Math.max(1, lineTops.size);
-    };
-
-    let rafId = 0;
-    let active = true;
-    const compute = () => {
-      const targetHeight = Math.max(96, carousel.clientHeight - 16);
-      const groups: { ayahs: QuranAyah[]; fontSize: number }[] = [];
-      let current: QuranAyah[] = [];
-
-      for (const ayah of ayahs) {
-        if (current.length === 0) {
-          if (measureGroup([ayah], fontSize, groups.length === 0) > targetHeight) {
-            groups.push({
-              ayahs: [ayah],
-              fontSize,
-            });
-          } else {
-            current = [ayah];
-          }
-          continue;
-        }
-
-        const candidate = [...current, ayah];
-        if (measureGroup(candidate, fontSize, groups.length === 0) > targetHeight) {
-          groups.push({ ayahs: current, fontSize });
-          current = [];
-
-          if (measureGroup([ayah], fontSize, false) > targetHeight) {
-            groups.push({ ayahs: [ayah], fontSize });
-          } else {
-            current = [ayah];
-          }
-        } else {
-          current = candidate;
-        }
-      }
-      if (current.length > 0) groups.push({ ayahs: current, fontSize });
-
-      // Rebalance verse boundaries in either direction so adjacent pages use their height evenly.
-      for (let round = 0; round < 2; round += 1) {
-        let changed = false;
-        for (let index = 1; index < groups.length; index += 1) {
-          const previous = groups[index - 1];
-          const next = groups[index];
-          const previousHeight = measureGroup(previous.ayahs, fontSize, index === 1);
-          const nextHeight = measureGroup(next.ayahs, fontSize, false);
-          const currentDifference = Math.abs(previousHeight - nextHeight);
-          const candidates: { previousAyahs: QuranAyah[]; nextAyahs: QuranAyah[] }[] = [];
-
-          if (previous.ayahs.length > 1) {
-            candidates.push({
-              previousAyahs: previous.ayahs.slice(0, -1),
-              nextAyahs: [previous.ayahs[previous.ayahs.length - 1], ...next.ayahs],
-            });
-          }
-          if (next.ayahs.length > 1) {
-            candidates.push({
-              previousAyahs: [...previous.ayahs, next.ayahs[0]],
-              nextAyahs: next.ayahs.slice(1),
-            });
-          }
-
-          const best = candidates
-            .map((candidate) => ({
-              ...candidate,
-              previousHeight: measureGroup(candidate.previousAyahs, fontSize, index === 1),
-              nextHeight: measureGroup(candidate.nextAyahs, fontSize, false),
-            }))
-            .filter((candidate) => {
-              const difference = Math.abs(candidate.previousHeight - candidate.nextHeight);
-              return (
-                candidate.previousHeight <= targetHeight &&
-                candidate.nextHeight <= targetHeight &&
-                difference + targetHeight * 0.03 < currentDifference
-              );
-            })
-            .sort(
-              (a, b) =>
-                Math.abs(a.previousHeight - a.nextHeight) -
-                Math.abs(b.previousHeight - b.nextHeight)
-            )[0];
-
-          if (best) {
-            groups[index - 1] = { ...previous, ayahs: best.previousAyahs };
-            groups[index] = { ...next, ayahs: best.nextAyahs };
-            changed = true;
-          }
-        }
-        if (!changed) break;
-      }
-
-      setPages(
-        groups.map(({ ayahs: group, fontSize: pageFontSize }, index) => {
-          measureGroup(group, pageFontSize, index === 0);
-          const lineCount = countMeasuredLines();
-          const bismillahHeight = index === 0 && showBismillah ? pageFontSize * 1.35 : 0;
-          const textAvailableHeight = Math.max(
-            pageFontSize * baseLineHeight,
-            targetHeight - bismillahHeight
-          );
-          const spreadLineHeight = textAvailableHeight / lineCount / pageFontSize;
-
-          return {
-            ayahs: group,
-            fontSize: pageFontSize,
-            lineHeight: Math.max(baseLineHeight, Math.min(2.05, spreadLineHeight)),
-          };
-        })
-      );
-    };
-
-    const schedule = () => {
-      if (!active) return;
-      cancelAnimationFrame(rafId);
-      rafId = requestAnimationFrame(compute);
-    };
-
-    schedule();
-    const observer = new ResizeObserver(schedule);
-    const fontSet = document.fonts;
-    observer.observe(carousel);
-    fontSet.addEventListener("loadingdone", schedule);
-    fontSet.ready.then(schedule);
-    return () => {
-      active = false;
-      cancelAnimationFrame(rafId);
-      observer.disconnect();
-      fontSet.removeEventListener("loadingdone", schedule);
-    };
-  }, [ayahs, fontSize, meta.number, tajweedMode, tajweedAyahs]);
+    return grouped;
+  }, [ayahs]);
 
   // Re-init embla whenever the page list changes (font size / viewport)
   useEffect(() => {
@@ -540,7 +371,7 @@ function SurahReader() {
 
   const showBismillah = meta.number !== 1 && meta.number !== 9;
 
-  const currentMushafPage = pages[page]?.ayahs[0]?.page;
+  const currentMushafPage = pages[page]?.mushafPage;
   const currentJuz = pages[page]?.ayahs[0]?.juz;
 
   return (
@@ -640,10 +471,7 @@ function SurahReader() {
       {/* Ayah pages — horizontal carousel */}
       <div
         className="relative flex-1 overflow-hidden"
-        ref={(el) => {
-          carouselRef.current = el;
-          emblaRef(el);
-        }}
+        ref={emblaRef}
       >
         <div className="flex h-full">
           {pages.map((pg, idx) => (
@@ -653,8 +481,8 @@ function SurahReader() {
               >
                 <MushafPage
                   ayahs={pg.ayahs}
-                  fontSize={pg.fontSize}
-                  lineHeight={pg.lineHeight}
+                  fontSize={fontSize}
+                  lineHeight={1.65}
                   showBismillah={idx === 0 && showBismillah}
                   tajweedMode={tajweedMode}
                   tajweedAyahs={tajweedAyahs}
@@ -668,19 +496,7 @@ function SurahReader() {
           ))}
         </div>
 
-        <div
-          aria-hidden
-          ref={measureRef}
-          className="font-quran pointer-events-none invisible absolute left-0 top-0 text-right"
-          style={{
-            fontSize,
-            lineHeight: 1.55,
-            width: "calc(100% - 16px)",
-            margin: 8,
-            textAlign: "right" as any,
-            whiteSpace: "normal",
-          }}
-        />
+
       </div>
 
       {/* Mushaf bottom strip — surah name | page number | juz */}
@@ -918,7 +734,6 @@ function SurahReader() {
 type MushafPageProps = {
   ayahs: { numberInSurah: number; text: string; page?: number; juz?: number }[];
   fontSize: number;
-  lineHeight: number;
   showBismillah: boolean;
   tajweedMode: boolean;
   tajweedAyahs: TajweedAyah[] | null;
@@ -931,7 +746,6 @@ type MushafPageProps = {
 function MushafPage({
   ayahs,
   fontSize,
-  lineHeight,
   showBismillah,
   tajweedMode,
   tajweedAyahs,
@@ -952,7 +766,7 @@ function MushafPage({
       )}
       <div
         className="font-quran flex-1 overflow-y-auto hide-scrollbar text-right"
-        style={{ fontSize, lineHeight, color: "var(--mushaf-ink)", textAlign: "right" as any }}
+        style={{ fontSize, lineHeight: 1.65, color: "var(--mushaf-ink)", textAlign: "right" as any }}
       >
         {tajweedMode && tajweedLoading && (
           <span className="mb-2 inline-flex items-center gap-2 rounded-full border bg-card px-2 py-1 text-[10px] text-muted-foreground">
