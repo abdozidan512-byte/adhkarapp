@@ -44,7 +44,7 @@ function QuranIndex() {
         s.englishName.toLowerCase().includes(term.toLowerCase()) ||
         String(s.number).includes(term)
     );
-  }, [q]);
+  }, [deferredQuery]);
 
   const downloadedCount = useMemo(() => {
     return surahs.filter((s) => cachedKeys.has(audioKey(bulkReciter, s.number))).length;
