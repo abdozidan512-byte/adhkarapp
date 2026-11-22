@@ -198,43 +198,64 @@ function SurahReader() {
     let rafId = 0;
     const compute = () => {
       const targetHeight = Math.max(96, carousel.clientHeight - 16);
-      let fittedFontSize = fontSize;
-
-      // A very long verse gets a smaller effective size before it can be clipped.
-      while (
-        fittedFontSize > minFontSize &&
-        ayahs.some((ayah, index) => measureGroup([ayah], fittedFontSize, index === 0) > targetHeight)
-      ) {
-        fittedFontSize -= 1;
-      }
-
-      const groups: QuranAyah[][] = [];
+      const groups: { ayahs: QuranAyah[]; fontSize: number }[] = [];
       let current: QuranAyah[] = [];
 
+      const fittedSizeFor = (ayah: QuranAyah, firstPage: boolean) => {
+        let size = fontSize;
+        while (size > minFontSize && measureGroup([ayah], size, firstPage) > targetHeight) {
+          size -= 1;
+        }
+        return size;
+      };
+
       for (const ayah of ayahs) {
+        if (current.length === 0) {
+          if (measureGroup([ayah], fontSize, groups.length === 0) > targetHeight) {
+            groups.push({
+              ayahs: [ayah],
+              fontSize: fittedSizeFor(ayah, groups.length === 0),
+            });
+          } else {
+            current = [ayah];
+          }
+          continue;
+        }
+
         const candidate = [...current, ayah];
-        if (current.length > 0 && measureGroup(candidate, fittedFontSize, groups.length === 0) > targetHeight) {
-          groups.push(current);
-          current = [ayah];
+        if (measureGroup(candidate, fontSize, groups.length === 0) > targetHeight) {
+          groups.push({ ayahs: current, fontSize });
+          current = [];
+
+          if (measureGroup([ayah], fontSize, false) > targetHeight) {
+            groups.push({ ayahs: [ayah], fontSize: fittedSizeFor(ayah, false) });
+          } else {
+            current = [ayah];
+          }
         } else {
           current = candidate;
         }
       }
-      if (current.length > 0) groups.push(current);
+      if (current.length > 0) groups.push({ ayahs: current, fontSize });
 
-      // Rebalance a short page by moving one complete verse from the previous page.
+      // Rebalance short pages without moving text across different font sizes.
       for (let index = 1; index < groups.length; index += 1) {
         const previous = groups[index - 1];
         const next = groups[index];
-        if (previous.length < 2 || measureGroup(next, fittedFontSize, false) >= targetHeight * 0.72) continue;
+        if (
+          previous.fontSize !== fontSize ||
+          next.fontSize !== fontSize ||
+          previous.ayahs.length < 2 ||
+          measureGroup(next.ayahs, fontSize, false) >= targetHeight * 0.72
+        ) continue;
 
-        const movedAyah = previous[previous.length - 1];
-        const balancedPrevious = previous.slice(0, -1);
-        const balancedNext = [movedAyah, ...next];
-        const previousHeight = measureGroup(previous, fittedFontSize, index === 1);
-        const nextHeight = measureGroup(next, fittedFontSize, false);
-        const balancedPreviousHeight = measureGroup(balancedPrevious, fittedFontSize, index === 1);
-        const balancedNextHeight = measureGroup(balancedNext, fittedFontSize, false);
+        const movedAyah = previous.ayahs[previous.ayahs.length - 1];
+        const balancedPrevious = previous.ayahs.slice(0, -1);
+        const balancedNext = [movedAyah, ...next.ayahs];
+        const previousHeight = measureGroup(previous.ayahs, fontSize, index === 1);
+        const nextHeight = measureGroup(next.ayahs, fontSize, false);
+        const balancedPreviousHeight = measureGroup(balancedPrevious, fontSize, index === 1);
+        const balancedNextHeight = measureGroup(balancedNext, fontSize, false);
 
         if (
           balancedPreviousHeight <= targetHeight &&
@@ -242,22 +263,22 @@ function SurahReader() {
           Math.min(balancedPreviousHeight, balancedNextHeight) >
             Math.min(previousHeight, nextHeight) + targetHeight * 0.06
         ) {
-          groups[index - 1] = balancedPrevious;
-          groups[index] = balancedNext;
+          groups[index - 1] = { ...previous, ayahs: balancedPrevious };
+          groups[index] = { ...next, ayahs: balancedNext };
         }
       }
 
       setPages(
-        groups.map((group, index) => {
-          const height = measureGroup(group, fittedFontSize, index === 0);
-          const bismillahHeight = index === 0 && showBismillah ? fittedFontSize * 1.35 : 0;
-          const textHeight = Math.max(fittedFontSize * baseLineHeight, height - bismillahHeight);
-          const lineCount = Math.max(1, Math.ceil(textHeight / (fittedFontSize * baseLineHeight)));
-          const spreadLineHeight = targetHeight / lineCount / fittedFontSize;
+        groups.map(({ ayahs: group, fontSize: pageFontSize }, index) => {
+          const height = measureGroup(group, pageFontSize, index === 0);
+          const bismillahHeight = index === 0 && showBismillah ? pageFontSize * 1.35 : 0;
+          const textHeight = Math.max(pageFontSize * baseLineHeight, height - bismillahHeight);
+          const lineCount = Math.max(1, Math.ceil(textHeight / (pageFontSize * baseLineHeight)));
+          const spreadLineHeight = targetHeight / lineCount / pageFontSize;
 
           return {
             ayahs: group,
-            fontSize: fittedFontSize,
+            fontSize: pageFontSize,
             lineHeight: Math.max(baseLineHeight, Math.min(3.2, spreadLineHeight)),
           };
         })
