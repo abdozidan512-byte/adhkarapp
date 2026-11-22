@@ -1,6 +1,8 @@
 import { getSurah, saveSurah, saveAudio, getAudio, getMushafPage, saveMushafPage } from "./db";
 import { reciters, type ReciterId } from "@/data/surahs";
 
+const mushafPageDownloads = new Map<string, Promise<Blob>>();
+
 export type Ayah = { numberInSurah: number; text: string; page?: number; juz?: number };
 
 // إزالة البسملة من بداية الآية الأولى لأي سورة
@@ -190,15 +192,26 @@ export async function downloadMushafPage(
   onProgress?: (pct: number) => void,
   signal?: AbortSignal,
 ): Promise<Blob> {
-  const cached = await getMushafPage(page, mode);
-  if (cached?.blob) {
-    onProgress?.(100);
-    return cached.blob;
+  const key = `${mode}-${page}`;
+  let request = mushafPageDownloads.get(key);
+  if (!request) {
+    request = (async () => {
+      const cached = await getMushafPage(page, mode);
+      if (cached?.blob) return cached.blob;
+      const response = await fetch(getMushafPageImageUrl(page, mode), { signal });
+      if (!response.ok) throw new Error(`تعذّر تنزيل صفحة المصحف ${page}: ${response.status}`);
+      const blob = await response.blob();
+      await saveMushafPage(page, mode, blob);
+      return blob;
+    })();
+    mushafPageDownloads.set(key, request);
   }
-  const response = await fetch(getMushafPageImageUrl(page, mode), { signal });
-  if (!response.ok) throw new Error(`تعذّر تنزيل صفحة المصحف ${page}: ${response.status}`);
-  const blob = await response.blob();
-  await saveMushafPage(page, mode, blob);
-  onProgress?.(100);
-  return blob;
+
+  try {
+    const blob = await request;
+    onProgress?.(100);
+    return blob;
+  } finally {
+    if (mushafPageDownloads.get(key) === request) mushafPageDownloads.delete(key);
+  }
 }
