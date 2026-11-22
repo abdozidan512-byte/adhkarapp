@@ -519,6 +519,15 @@ function SurahReader() {
           >
             {reciters.find((r) => r.id === reciter)?.avatar} {reciters.find((r) => r.id === reciter)?.name}
           </button>
+          <button
+            onClick={() => setTajweedMode((value) => !value)}
+            aria-pressed={tajweedMode}
+            aria-label={tajweedMode ? "إيقاف ألوان التجويد" : "تفعيل ألوان التجويد"}
+            className={cn("flex h-8 w-8 shrink-0 items-center justify-center rounded-full border bg-card", tajweedMode && "ring-2")}
+            style={tajweedMode ? { background: "var(--gradient-gold)", color: "var(--gold-foreground)", borderColor: "transparent" } : undefined}
+          >
+            <Palette className="h-4 w-4" />
+          </button>
           {playing === null ? (
             <button
               onClick={playFullSurah}
@@ -581,7 +590,7 @@ function SurahReader() {
                     key={`${pg.mushafPage}-${tajweedMode}-${idx === page ? imageRetry : 0}`}
                     src={idx === page ? pageImageSrc : getMushafPageImageUrl(pg.mushafPage, tajweedMode ? "tajweed" : "clear")}
                     alt={`صفحة المصحف ${pg.mushafPage} من سورة ${meta.name}`}
-                    className="h-full w-full select-none object-contain"
+                    className="h-full w-full select-none object-fill"
                     draggable={false}
                     loading={idx === page ? "eager" : "lazy"}
                     decoding="async"
@@ -609,18 +618,7 @@ function SurahReader() {
           </div>
         </div>
       )}
-      {/* Floating control now toggles tajweed directly. */}
-      <div className="absolute bottom-6 left-4 z-[70]">
-        <button
-          onClick={() => setTajweedMode((value) => !value)}
-          aria-pressed={tajweedMode}
-          aria-label={tajweedMode ? "إيقاف ألوان التجويد" : "تفعيل ألوان التجويد"}
-          className="flex h-14 w-14 items-center justify-center rounded-full shadow-xl"
-          style={{ background: "var(--gradient-gold)", color: "var(--gold-foreground)" }}
-        >
-          <Palette className="h-6 w-6" />
-        </button>
-      </div>
+
 
       {selectedAyahs.length > 0 && (
         <div className="fixed bottom-[calc(4.5rem+env(safe-area-inset-bottom))] left-1/2 z-[85] flex max-w-[calc(100vw-1rem)] -translate-x-1/2 items-center gap-1 rounded-2xl border px-2 py-2 shadow-2xl" style={{ background: "var(--card)", borderColor: "var(--gold)" }}>
