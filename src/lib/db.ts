@@ -165,3 +165,9 @@ export async function getCachedMushafPageKeys(): Promise<Set<string>> {
   if (!db) return new Set();
   return new Set(await db.getAllKeys("mushafPages"));
 }
+
+export async function getCachedSurahNumbers(): Promise<Set<number>> {
+  const db = await getDB();
+  if (!db) return new Set();
+  return new Set((await db.getAllKeys("quran")).map(Number));
+}
