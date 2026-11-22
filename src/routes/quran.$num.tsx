@@ -56,7 +56,6 @@ function SurahReader() {
   const meta = Route.useLoaderData();
   const search = Route.useSearch();
   const [ayahs, setAyahs] = useState<QuranAyah[] | null>(null);
-  const [chromeVisible, setChromeVisible] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [fontSize, setFontSize] = useState(28);
   const [reciter, setReciter] = useState<ReciterId>("ar.yasser");
@@ -65,7 +64,7 @@ function SurahReader() {
   const [cachedKeys, setCachedKeys] = useState<Set<string>>(new Set());
   const [selectedAyahs, setSelectedAyahs] = useState<Set<number>>(new Set());
   const [showReciterSheet, setShowReciterSheet] = useState(false);
-  const [tajweedMode, setTajweedMode] = useState(false);
+  const [tajweedMode, setTajweedMode] = useState(true);
   const [tajweedAyahs, setTajweedAyahs] = useState<TajweedAyah[] | null>(null);
   const [tajweedLoading, setTajweedLoading] = useState(false);
   const [showLegend, setShowLegend] = useState(false);
@@ -155,84 +154,36 @@ function SurahReader() {
     };
   }, []);
 
-  // Dynamic pagination: measure how many ayahs fit on the current screen
-  // at the chosen font size, and split at full-ayah boundaries only.
+  // Keep every printed Mushaf page together. Dynamic height-based pagination
+  // used to split one printed page across multiple screens and leave large gaps.
   const carouselRef = useRef<HTMLDivElement | null>(null);
-  const measureRef = useRef<HTMLDivElement | null>(null);
   const [pages, setPages] = useState<QuranPage[]>([]);
 
   useLayoutEffect(() => {
-    if (!ayahs) return;
-    const carousel = carouselRef.current;
-    const measurer = measureRef.current;
-    if (!carousel || !measurer) return;
+    if (!ayahs) {
+      setPages([]);
+      return;
+    }
 
-    const showBismillah = meta.number !== 1 && meta.number !== 9;
-    const escape = (s: string) =>
-      s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]!));
-    const visualText = (ayah: QuranAyah) => {
-      const tajweedText = tajweedMode ? tajweedAyahs?.find((t) => t.numberInSurah === ayah.numberInSurah)?.text : undefined;
-      return tajweedText ? stripTajweedMarks(tajweedText) : ayah.text;
-    };
+    const pageGroups = new Map<number, QuranAyah[]>();
+    let fallbackPage = 1;
 
-    let rafId = 0;
-    let lastH = 0;
+    for (const ayah of ayahs) {
+      const mushafPage = typeof ayah.page === "number" ? ayah.page : fallbackPage;
+      const group = pageGroups.get(mushafPage);
+      if (group) group.push(ayah);
+      else pageGroups.set(mushafPage, [ayah]);
+      fallbackPage = mushafPage;
+    }
 
-    const compute = () => {
-      const PADDING_Y = 16;
-      const targetH = Math.max(0, carousel.clientHeight - PADDING_Y);
-      const TOL = 2;
-      const lineHeight = fontSize >= 30 ? 1.9 : 2.05;
-
-      const ayahHTML = (ayah: QuranAyah) =>
-        `${escape(visualText(ayah))}<span class="ayah-ornament tabular-nums">${ayah.numberInSurah}</span> `;
-
-      const bismillahHTML = (firstPage: boolean) =>
-        firstPage && showBismillah
-          ? `<div class="font-quran" style="font-size:${fontSize * 1.02}px;line-height:1.3;text-align:center;margin-bottom:6px;color:var(--gold);">بِسْمِ اللَّهِ الرَّحْمَٰنِ الرَّحِيمِ</div>`
-          : "";
-
-      const result: QuranPage[] = [];
-      let i = 0;
-      while (i < ayahs.length) {
-        const firstPage = result.length === 0;
-        const prefix = bismillahHTML(firstPage) +
-          `<div class="font-quran" style="font-size:${fontSize}px;line-height:${lineHeight};text-align:justify;text-align-last:center;color:var(--mushaf-ink);">`;
-        let lastFitIdx = i;
-        let accumulated = "";
-        for (let j = i; j < ayahs.length; j++) {
-          accumulated += ayahHTML(ayahs[j]);
-          measurer.innerHTML = prefix + accumulated + "</div>";
-          if (measurer.scrollHeight <= targetH + TOL || j === i) {
-            lastFitIdx = j;
-          } else {
-            break;
-          }
-        }
-        result.push({ ayahs: ayahs.slice(i, lastFitIdx + 1), fontSize, lineHeight });
-        i = lastFitIdx + 1;
-      }
-      setPages(result);
-    };
-
-    const schedule = () => {
-      cancelAnimationFrame(rafId);
-      rafId = requestAnimationFrame(compute);
-    };
-
-    schedule();
-    const ro = new ResizeObserver(() => {
-      const h = carousel.clientHeight;
-      if (Math.abs(h - lastH) < 4) return;
-      lastH = h;
-      schedule();
-    });
-    ro.observe(carousel);
-    return () => {
-      cancelAnimationFrame(rafId);
-      ro.disconnect();
-    };
-  }, [ayahs, fontSize, meta.number, tajweedMode, tajweedAyahs]);
+    setPages(
+      Array.from(pageGroups.values(), (pageAyahs) => ({
+        ayahs: pageAyahs,
+        fontSize,
+        lineHeight: 1.75,
+      }))
+    );
+  }, [ayahs, fontSize]);
 
   // Re-init embla whenever the page list changes (font size / viewport)
   useEffect(() => {
@@ -436,13 +387,8 @@ function SurahReader() {
 
   return (
     <div className="fixed inset-0 z-40 flex flex-col" style={{ background: "var(--mushaf-paper)", paddingTop: "env(safe-area-inset-top)", paddingBottom: "env(safe-area-inset-bottom)" }}>
-      {/* Top bar — collapsible */}
-      <div
-        className={cn(
-          "overflow-hidden transition-all duration-300",
-          chromeVisible ? "max-h-40 opacity-100" : "max-h-0 opacity-0"
-        )}
-      >
+      {/* Reader controls stay visible while reading. */}
+      <div className="shrink-0">
         <div
           className="flex items-center justify-between gap-2 border-b px-3 py-3"
           style={{ background: "var(--gradient-hero)" }}
@@ -560,7 +506,6 @@ function SurahReader() {
             <div key={idx} className="h-full min-w-0 shrink-0 grow-0 basis-full">
               <div
                 className="mushaf-page relative h-full overflow-hidden p-2"
-                onClick={() => setChromeVisible((v) => !v)}
               >
                 <MushafPage
                   ayahs={pg.ayahs}
@@ -579,20 +524,6 @@ function SurahReader() {
           ))}
         </div>
 
-        {/* Hidden measurer — same width/font as a real page minus padding */}
-        <div
-          aria-hidden
-          ref={measureRef}
-          className="font-quran pointer-events-none invisible absolute left-0 top-0 text-justify"
-          style={{
-            fontSize: fontSize,
-            lineHeight: 1.52,
-            width: "calc(100% - 16px)",
-            margin: 8,
-            textAlignLast: "center" as any,
-            whiteSpace: "normal",
-          }}
-        />
       </div>
 
       {/* Mushaf bottom strip — surah name | page number | juz */}
