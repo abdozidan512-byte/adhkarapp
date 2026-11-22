@@ -519,7 +519,7 @@ function SurahReader() {
   }
 
   function playAyah(ayah: number, existingAudio?: HTMLAudioElement) {
-    if (Capacitor.isNativePlatform()) {
+    if (Capacitor.isNativePlatform() && navigator.onLine) {
       const ayahNumbers = [ayah, ...playQueueRef.current];
       const tracks = ayahNumbers.map(nativeAyahTrack);
       if (tracks.every((track) => track !== null)) {
@@ -583,7 +583,7 @@ function SurahReader() {
 
   function playFullSurahFile() {
     const src = getFullSurahAudioUrl(reciter, meta.number);
-    if (Capacitor.isNativePlatform()) {
+    if (Capacitor.isNativePlatform() && navigator.onLine) {
       if (src) {
         const track = {
           trackId: `surah-${meta.number}`,
