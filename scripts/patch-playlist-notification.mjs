@@ -40,10 +40,8 @@ await replaceExactlyOnce(
 
 await replaceExactlyOnce(
   "service/PlaylistMediaSessionCallback.kt",
-  ") : MediaSession.Callback {\n\n    override fun onConnect(",
-  `) : MediaSession.Callback {
-
-    private val seekBackFiveButton = CommandButton.Builder(CommandButton.ICON_SKIP_BACK_5)
+  "    data class SkipAvailability(",
+  `    private val seekBackFiveButton = CommandButton.Builder(CommandButton.ICON_SKIP_BACK_5)
         .setDisplayName("الرجوع ٥ ثوانٍ")
         .setPlayerCommand(Player.COMMAND_SEEK_BACK)
         .setSlots(intArrayOf(CommandButton.SLOT_OVERFLOW))
@@ -55,7 +53,7 @@ await replaceExactlyOnce(
         .setSlots(intArrayOf(CommandButton.SLOT_OVERFLOW))
         .build()
 
-    override fun onConnect(`,
+    data class SkipAvailability(`,
   "5-second notification buttons",
 );
 
