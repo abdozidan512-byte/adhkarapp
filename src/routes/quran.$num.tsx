@@ -89,6 +89,41 @@ async function downloadConcurrently<T>(
   return failures;
 }
 
+async function detectTajweedCropSide(blob: Blob): Promise<"left" | "right"> {
+  if (typeof createImageBitmap !== "function") return "left";
+  let bitmap: ImageBitmap | null = null;
+  try {
+    bitmap = await createImageBitmap(blob);
+    const canvas = document.createElement("canvas");
+    canvas.width = 96;
+    canvas.height = 128;
+    const context = canvas.getContext("2d", { willReadFrequently: true });
+    if (!context) return "left";
+    context.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+    const pixels = context.getImageData(0, 0, canvas.width, canvas.height).data;
+    let leftInk = 0;
+    let rightInk = 0;
+    for (let y = 12; y < 116; y++) {
+      for (let x = 4; x < 92; x++) {
+        const offset = (y * canvas.width + x) * 4;
+        const red = pixels[offset];
+        const green = pixels[offset + 1];
+        const blue = pixels[offset + 2];
+        const brightness = (red + green + blue) / 3;
+        const chroma = Math.max(red, green, blue) - Math.min(red, green, blue);
+        const ink = brightness < 168 ? 1 : chroma > 55 && brightness < 240 ? 0.45 : 0;
+        if (x < 48) leftInk += ink;
+        else rightInk += ink;
+      }
+    }
+    return rightInk > leftInk * 1.38 ? "right" : "left";
+  } catch {
+    return "left";
+  } finally {
+    bitmap?.close();
+  }
+}
+
 function SurahReader() {
   const meta = Route.useLoaderData();
   const search = Route.useSearch();
@@ -107,6 +142,7 @@ function SurahReader() {
   const [pageImageLoaded, setPageImageLoaded] = useState(false);
   const [pageImageError, setPageImageError] = useState(false);
   const [pageImageSrc, setPageImageSrc] = useState("");
+  const [pageCropSides, setPageCropSides] = useState<Record<number, "left" | "right">>({});
   const [imageRetry, setImageRetry] = useState(0);
   const [showAyahSelection, setShowAyahSelection] = useState(false);
   const [selectedAyahs, setSelectedAyahs] = useState<number[]>([]);
@@ -281,8 +317,13 @@ function SurahReader() {
     setPageImageSrc("");
 
     downloadMushafPage(mushafPage, mode)
-      .then((blob) => {
+      .then(async (blob) => {
         if (!active) return;
+        if (mode === "tajweed") {
+          const side = await detectTajweedCropSide(blob);
+          if (!active) return;
+          setPageCropSides((current) => ({ ...current, [mushafPage]: side }));
+        }
         objectUrl = URL.createObjectURL(blob);
         setPageImageSrc(objectUrl);
 
@@ -296,7 +337,13 @@ function SurahReader() {
         for (const adjacent of nearbyPages) {
           const image = new Image();
           image.src = getMushafPageImageUrl(adjacent, mode);
-          void downloadMushafPage(adjacent, mode).catch(() => undefined);
+          void downloadMushafPage(adjacent, mode)
+            .then(async (adjacentBlob) => {
+              if (!active || mode !== "tajweed") return;
+              const side = await detectTajweedCropSide(adjacentBlob);
+              if (active) setPageCropSides((current) => ({ ...current, [adjacent]: side }));
+            })
+            .catch(() => undefined);
         }
       })
       .catch(() => {
@@ -944,7 +991,7 @@ function SurahReader() {
                     // Apply the frame crop only to Tajweed pages.
                     style={tajweedMode ? {
                       position: "absolute",
-                      left: 0,
+                      ...(pageCropSides[pg.mushafPage] === "right" ? { right: 0 } : { left: 0 }),
                       top: "-8.5%",
                       width: "125%",
                       height: "116%",
