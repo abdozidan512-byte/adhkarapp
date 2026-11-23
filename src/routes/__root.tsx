@@ -72,11 +72,75 @@ function RootComponent() {
     let notificationCheckInFlight = false;
     let lastNotificationCheck = 0;
     let waitingForInputToBlur = false;
+    let reloadAfterBlur = false;
 
     const isEditing = () => {
       const active = document.activeElement;
       return active instanceof HTMLElement &&
         (active.matches("input, textarea, select") || active.isContentEditable);
+    };
+
+    const handleControllerChange = () => {
+      if (isEditing()) {
+        reloadAfterBlur = true;
+        return;
+      }
+      window.location.reload();
+    };
+
+    const handleInputBlur = () => {
+      waitingForInputToBlur = false;
+      if (reloadAfterBlur && !isEditing()) {
+        window.location.reload();
+        return;
+      }
+      scheduleNotificationCheck();
+    };
+
+    const registerServiceWorker = async () => {
+      if (typeof window === "undefined" || !("serviceWorker" in navigator)) return;
+
+      let inIframe = false;
+      try {
+        inIframe = window.self !== window.top;
+      } catch {
+        inIframe = true;
+      }
+
+      const host = window.location.hostname;
+      const isLocalHost = host === "localhost" || host === "127.0.0.1";
+      const isPreview = host.includes("id-preview--") || isLocalHost;
+
+      if (inIframe || isPreview) {
+        const registrations = await navigator.serviceWorker.getRegistrations().catch(() => []);
+        registrations.forEach((registration) => void registration.unregister());
+        return;
+      }
+
+      const existing = await navigator.serviceWorker.getRegistration().catch(() => undefined);
+      const registration = existing ?? await navigator.serviceWorker.register("/sw.js").catch(() => undefined);
+      if (!registration) return;
+
+      try {
+        await registration.update();
+      } catch {}
+
+      const activateWaiting = (worker: ServiceWorker | null) => {
+        if (worker && worker.state === "installed" && navigator.serviceWorker.controller) {
+          worker.postMessage("SKIP_WAITING");
+        }
+      };
+
+      activateWaiting(registration.waiting);
+      registration.addEventListener("updatefound", () => {
+        const installing = registration.installing;
+        if (!installing) return;
+        installing.addEventListener("statechange", () => activateWaiting(installing));
+      });
+
+      navigator.serviceWorker.removeEventListener("controllerchange", handleControllerChange);
+      navigator.serviceWorker.addEventListener("controllerchange", handleControllerChange);
+      await navigator.serviceWorker.ready.catch(() => undefined);
     };
 
     const runNotificationCheck = () => {
@@ -105,11 +169,6 @@ function RootComponent() {
       notificationTimer = window.setTimeout(runNotificationCheck, delay);
     };
 
-    const handleInputBlur = () => {
-      waitingForInputToBlur = false;
-      scheduleNotificationCheck();
-    };
-
     const handleUserActivity = () => scheduleNotificationCheck();
     const handleVisibilityChange = () => {
       if (document.visibilityState === "visible") {
@@ -120,7 +179,7 @@ function RootComponent() {
       }
     };
 
-    // Service-worker maintenance runs once at startup, never on keyboard focus.
+    // Android's localhost origin removes web workers; normal web installs register once.
     void registerServiceWorker().catch(() => undefined);
     scheduleNotificationCheck();
 
@@ -134,6 +193,9 @@ function RootComponent() {
       document.removeEventListener("focusout", handleInputBlur);
       window.removeEventListener("pointerdown", handleUserActivity);
       window.removeEventListener("keydown", handleUserActivity);
+      if ("serviceWorker" in navigator) {
+        navigator.serviceWorker.removeEventListener("controllerchange", handleControllerChange);
+      }
     };
   }, []);
 
