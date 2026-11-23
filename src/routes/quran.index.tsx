@@ -4,6 +4,7 @@ import { ChevronLeft, Download, Check, X } from "lucide-react";
 import { surahs, reciters, type ReciterId } from "@/data/surahs";
 import { PageHeader } from "@/components/PageHeader";
 import { ContinueReading } from "@/components/ContinueReading";
+import { SurahSearch } from "@/components/SurahSearch";
 import { downloadFullSurah, downloadMushafPage, fetchSurahText, audioKey } from "@/lib/quran-api";
 import { getCachedAudioKeys, getCachedMushafPageKeys, getCachedSurahNumbers } from "@/lib/db";
 
@@ -174,7 +175,8 @@ function QuranIndex() {
           )}
         </div>
 
-              </div>
+        <SurahSearch />
+      </div>
 
       {/* Sheet تحميل كل السور */}
       {bulkOpen && (
