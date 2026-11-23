@@ -1,16 +1,14 @@
 import { Link } from "@tanstack/react-router";
-import { memo, useEffect, useMemo, useRef, useState } from "react";
-import type { CompositionEvent, FormEvent } from "react";
+import { memo, useMemo, useState } from "react";
 import { BookOpen, ChevronLeft, Search, X } from "lucide-react";
 import { surahs, type Surah } from "@/data/surahs";
 
 const PAGE_SIZE = 16;
-const INPUT_IDLE_MS = 160;
 
 function normalizeSurahQuery(value: string) {
   return value
     .normalize("NFKD")
-    .replace(/[\u0610-\u061A\u064B-\u065F\u0670\u06D6-\u06ED\u0640]/g, "")
+    .replace(/[\\u0610-\\u061A\\u064B-\\u065F\\u0670\\u06D6-\\u06ED\\u0640]/g, "")
     .replace(/[أإآٱ]/g, "ا")
     .replace(/ى/g, "ي")
     .replace(/ؤ/g, "و")
@@ -19,9 +17,9 @@ function normalizeSurahQuery(value: string) {
     .replace(/[٠-٩]/g, (digit) => String(digit.charCodeAt(0) - 0x0660))
     .replace(/[۰-۹]/g, (digit) => String(digit.charCodeAt(0) - 0x06f0))
     .toLowerCase()
-    .replace(/[^a-z0-9\u0600-\u06ff]+/g, " ")
+    .replace(/[^a-z0-9\\u0600-\\u06ff]+/g, " ")
     .trim()
-    .replace(/\s+/g, " ");
+    .replace(/\\s+/g, " ");
 }
 
 const indexedSurahs = surahs.map((surah) => ({
@@ -36,9 +34,6 @@ const indexedSurahs = surahs.map((surah) => ({
 export const SurahSearch = memo(function SurahSearch() {
   const [query, setQuery] = useState("");
   const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
-  const inputRef = useRef<HTMLInputElement>(null);
-  const timerRef = useRef<number | undefined>(undefined);
-  const composingRef = useRef(false);
 
   const normalizedQuery = normalizeSurahQuery(query);
   const matches = useMemo(() => {
@@ -50,47 +45,13 @@ export const SurahSearch = memo(function SurahSearch() {
   }, [normalizedQuery]);
   const visibleMatches = matches.slice(0, visibleCount);
 
-  useEffect(() => {
-    return () => {
-      if (timerRef.current !== undefined) window.clearTimeout(timerRef.current);
-    };
-  }, []);
-
-  function scheduleSearch(value: string) {
-    if (timerRef.current !== undefined) window.clearTimeout(timerRef.current);
-    timerRef.current = window.setTimeout(() => {
-      setQuery(value);
-      setVisibleCount(PAGE_SIZE);
-      timerRef.current = undefined;
-    }, INPUT_IDLE_MS);
-  }
-
-  function handleInput(event: FormEvent<HTMLInputElement>) {
-    if (composingRef.current) return;
-    scheduleSearch(event.currentTarget.value);
-  }
-
-  function handleCompositionStart() {
-    composingRef.current = true;
-    if (timerRef.current !== undefined) {
-      window.clearTimeout(timerRef.current);
-      timerRef.current = undefined;
-    }
-  }
-
-  function handleCompositionEnd(event: CompositionEvent<HTMLInputElement>) {
-    composingRef.current = false;
-    scheduleSearch(event.currentTarget.value);
+  function handleQueryChange(value: string) {
+    setQuery(value);
+    setVisibleCount(PAGE_SIZE);
   }
 
   function clearSearch() {
-    if (timerRef.current !== undefined) window.clearTimeout(timerRef.current);
-    timerRef.current = undefined;
-    composingRef.current = false;
-    if (inputRef.current) inputRef.current.value = "";
-    setQuery("");
-    setVisibleCount(PAGE_SIZE);
-    inputRef.current?.focus();
+    handleQueryChange("");
   }
 
   const hasQuery = normalizedQuery.length > 0;
@@ -110,9 +71,8 @@ export const SurahSearch = memo(function SurahSearch() {
       >
         <Search className="h-5 w-5 shrink-0 text-muted-foreground" aria-hidden="true" />
         <input
-          ref={inputRef}
           type="text"
-          inputMode="search"
+          inputMode="text"
           enterKeyHint="search"
           autoComplete="off"
           autoCorrect="off"
@@ -121,9 +81,8 @@ export const SurahSearch = memo(function SurahSearch() {
           maxLength={64}
           aria-label="ابحث باسم السورة أو رقمها"
           aria-controls="surah-search-results"
-          onInput={handleInput}
-          onCompositionStart={handleCompositionStart}
-          onCompositionEnd={handleCompositionEnd}
+          value={query}
+          onChange={(event) => handleQueryChange(event.currentTarget.value)}
           placeholder="ابحث عن سورة أو رقم..."
           className="min-w-0 flex-1 bg-transparent text-base outline-none"
         />
