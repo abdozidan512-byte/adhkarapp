@@ -169,7 +169,11 @@ function QuranIndex() {
           <div className="mb-2 flex items-center justify-between gap-2">
             <div>
               <p className="font-extrabold">المصحف دون إنترنت</p>
-              <p className="text-[11px] text-muted-foreground">النسخة الواضحة والتجويد + نص السور • نحو 260 م.ب</p>
+              <p className="text-[11px] text-muted-foreground">النسخة الواضحة والتجويد + نص السور • قد يصل إلى 590 م.ب</p>
+              <p className="mt-1 text-[10px] text-muted-foreground">
+                صفحات التجويد من دار المعرفة للاستخدام الإلكتروني غير التجاري •{" "}
+                <a href="https://github.com/jahedev/tajweed-quran-pages" target="_blank" rel="noreferrer" className="underline">مصدر الصفحات</a>
+              </p>
               <p className="mt-1 text-[10px] text-muted-foreground">المحفوظ: {cachedPages.size} / 1208 صفحة • {cachedSurahs.size} / 114 سورة</p>
             </div>
             <Download className="h-5 w-5 shrink-0" style={{ color: "var(--gold)" }} />

@@ -35,7 +35,7 @@ interface AzkarDB extends DBSchema {
   };
   mushafPages: {
     key: string; // "tajweed-1" etc.
-    value: { key: string; page: number; mode: "tajweed" | "clear"; blob: Blob; size: number; cachedAt: number };
+    value: { key: string; page: number; mode: "tajweed" | "clear"; blob: Blob; size: number; cachedAt: number; edition?: string };
   };
 }
 
@@ -153,11 +153,11 @@ export async function getMushafPage(page: number, mode: "tajweed" | "clear" = "t
   return db.get("mushafPages", mushafPageKey(page, mode));
 }
 
-export async function saveMushafPage(page: number, mode: "tajweed" | "clear", blob: Blob) {
+export async function saveMushafPage(page: number, mode: "tajweed" | "clear", blob: Blob, edition?: string) {
   const db = await getDB();
   if (!db) return;
   const key = mushafPageKey(page, mode);
-  await db.put("mushafPages", { key, page, mode, blob, size: blob.size, cachedAt: Date.now() });
+  await db.put("mushafPages", { key, page, mode, blob, size: blob.size, cachedAt: Date.now(), edition });
 }
 
 export async function getCachedMushafPageKeys(): Promise<Set<string>> {

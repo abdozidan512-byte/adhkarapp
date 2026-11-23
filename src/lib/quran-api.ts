@@ -180,10 +180,18 @@ export async function getFullSurahBlob(reciterId: ReciterId, surahNumber: number
 
 export type MushafPageMode = "tajweed" | "clear";
 
+const TAJWEED_MUSHAF_EDITION = "easyquran-hafs-1f8a59b8";
+const TAJWEED_MUSHAF_REVISION = "1f8a59b8b11e9ecfa859971a5dcfb326679757b3";
+const CLEAR_MUSHAF_EDITION = "quranhub-hafs-wasat-v1";
+
 export function getMushafPageImageUrl(page: number, mode: MushafPageMode = "tajweed") {
-  const collection = mode === "tajweed" ? "ayat/tajweed" : "kfgqpc/hafs-wasat";
-  const extension = mode === "tajweed" ? "png" : "jpg";
-  return `https://raw.githubusercontent.com/QuranHub/quran-pages-images/main/${collection}/${page}.${extension}`;
+  if (!Number.isInteger(page) || page < 1 || page > 604) {
+    throw new RangeError("Mushaf page must be between 1 and 604");
+  }
+  if (mode === "tajweed") {
+    return `https://raw.githubusercontent.com/jahedev/tajweed-quran-pages/${TAJWEED_MUSHAF_REVISION}/hafs/tajweed-${pad3(page)}.jpg`;
+  }
+  return `https://raw.githubusercontent.com/QuranHub/quran-pages-images/main/kfgqpc/hafs-wasat/${page}.jpg`;
 }
 
 export async function downloadMushafPage(
@@ -197,12 +205,19 @@ export async function downloadMushafPage(
   if (!request) {
     request = (async () => {
       const cached = await getMushafPage(page, mode);
-      if (cached?.blob) return cached.blob;
-      const response = await fetch(getMushafPageImageUrl(page, mode), { signal });
-      if (!response.ok) throw new Error(`تعذّر تنزيل صفحة المصحف ${page}: ${response.status}`);
-      const blob = await response.blob();
-      await saveMushafPage(page, mode, blob);
-      return blob;
+      const edition = mode === "tajweed" ? TAJWEED_MUSHAF_EDITION : CLEAR_MUSHAF_EDITION;
+      if (cached?.blob && (mode === "clear" || cached.edition === edition)) return cached.blob;
+      try {
+        const response = await fetch(getMushafPageImageUrl(page, mode), { signal });
+        if (!response.ok) throw new Error(`تعذّر تنزيل صفحة المصحف ${page}: ${response.status}`);
+        const blob = await response.blob();
+        await saveMushafPage(page, mode, blob, edition);
+        return blob;
+      } catch (error) {
+        // Keep previously downloaded pages readable until the replacement is available.
+        if (cached?.blob && !signal?.aborted) return cached.blob;
+        throw error;
+      }
     })();
     mushafPageDownloads.set(key, request);
   }
