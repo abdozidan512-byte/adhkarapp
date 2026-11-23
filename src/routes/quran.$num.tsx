@@ -919,8 +919,12 @@ function SurahReader() {
       <div className="relative min-h-0 flex-1 overflow-hidden" ref={emblaRef}>
         <div className="flex h-full w-full">
           {pages.map((pg, idx) => (
-            <div key={pg.mushafPage} className="h-full min-w-0 shrink-0 grow-0 basis-full">
-              <div className="relative flex h-full w-full items-center justify-center p-0">
+            <div
+              key={pg.mushafPage}
+              className="h-full min-w-0 shrink-0 grow-0 basis-full"
+              style={{ flex: "0 0 100%", width: "100%" }}
+            >
+              <div className="relative h-full w-full overflow-hidden">
                 {idx === page && !pageImageLoaded && !pageImageError && (
                   <Loader2 className="absolute h-8 w-8 animate-spin text-muted-foreground" aria-label="جارٍ تحميل صفحة المصحف" />
                 )}
@@ -935,7 +939,18 @@ function SurahReader() {
                     key={`${pg.mushafPage}-${tajweedMode}-${idx === page ? imageRetry : 0}`}
                     src={idx === page ? pageImageSrc : getMushafPageImageUrl(pg.mushafPage, tajweedMode ? "tajweed" : "clear")}
                     alt={`صفحة المصحف ${pg.mushafPage} من سورة ${meta.name}`}
-                    className="h-full w-full select-none object-fill"
+                    className="select-none"
+                    // The scanned page sits within a larger paper canvas. Crop that canvas
+                    // so the Mushaf page itself fills the reader without showing the side notes.
+                    style={{
+                      position: "absolute",
+                      left: 0,
+                      top: "-8.5%",
+                      width: "125%",
+                      height: "116%",
+                      maxWidth: "none",
+                      objectFit: "fill",
+                    }}
                     draggable={false}
                     loading={idx === page ? "eager" : "lazy"}
                     decoding="async"
