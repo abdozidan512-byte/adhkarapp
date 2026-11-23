@@ -68,87 +68,75 @@ function RootShell({ children }: { children: React.ReactNode }) {
 
 function RootComponent() {
   useEffect(() => {
-    const registerServiceWorker = async () => {
-      if (typeof window === "undefined" || !("serviceWorker" in navigator)) return;
+    let notificationTimer: number | undefined;
+    let notificationCheckInFlight = false;
+    let lastNotificationCheck = 0;
+    let waitingForInputToBlur = false;
 
-      let inIframe = false;
-      try {
-        inIframe = window.self !== window.top;
-      } catch {
-        inIframe = true;
-      }
+    const isEditing = () => {
+      const active = document.activeElement;
+      return active instanceof HTMLElement &&
+        (active.matches("input, textarea, select") || active.isContentEditable);
+    };
 
-      const host = window.location.hostname;
-      const isPreview =
-        host.includes("id-preview--") ||
-        host === "localhost" ||
-        host === "127.0.0.1";
-
-      if (inIframe || isPreview) {
-        const regs = await navigator.serviceWorker.getRegistrations();
-        regs.forEach((r) => r.unregister());
+    const runNotificationCheck = () => {
+      notificationTimer = undefined;
+      if (document.visibilityState !== "visible") return;
+      if (isEditing()) {
+        if (!waitingForInputToBlur) {
+          waitingForInputToBlur = true;
+          document.addEventListener("focusout", handleInputBlur, { once: true });
+        }
         return;
       }
+      if (notificationCheckInFlight || Date.now() - lastNotificationCheck < 60_000) return;
 
-      const existing = await navigator.serviceWorker.getRegistration();
-      const reg = existing ?? (await navigator.serviceWorker.register("/sw.js").catch(() => undefined));
-      if (!reg) return;
-
-      // إجبار التحديث وفحص الإصدار الجديد
-      try {
-        await reg.update();
-      } catch {}
-
-      // إذا وُجد SW جديد بانتظار التفعيل، فعّله فوراً ثم أعد التحميل مرة واحدة
-      const activateWaiting = (sw: ServiceWorker | null) => {
-        if (sw && sw.state === "installed" && navigator.serviceWorker.controller) {
-          sw.postMessage("SKIP_WAITING");
-        }
-      };
-      activateWaiting(reg.waiting);
-      reg.addEventListener("updatefound", () => {
-        const nw = reg.installing;
-        if (!nw) return;
-        nw.addEventListener("statechange", () => activateWaiting(nw));
-      });
-
-      let reloaded = false;
-      navigator.serviceWorker.addEventListener("controllerchange", () => {
-        if (reloaded) return;
-        reloaded = true;
-        window.location.reload();
-      });
-
-      await navigator.serviceWorker.ready.catch(() => undefined);
+      notificationCheckInFlight = true;
+      lastNotificationCheck = Date.now();
+      void ensureDailySchedule()
+        .catch(() => undefined)
+        .finally(() => {
+          notificationCheckInFlight = false;
+        });
     };
 
-    const syncNotifications = async () => {
-      await registerServiceWorker();
-      await ensureDailySchedule().catch(() => undefined);
+    const scheduleNotificationCheck = (delay = 1600) => {
+      if (notificationTimer !== undefined) window.clearTimeout(notificationTimer);
+      notificationTimer = window.setTimeout(runNotificationCheck, delay);
     };
 
-    syncNotifications();
-
-    const handleFocus = () => {
-      syncNotifications();
+    const handleInputBlur = () => {
+      waitingForInputToBlur = false;
+      scheduleNotificationCheck();
     };
 
+    const handleUserActivity = () => scheduleNotificationCheck();
     const handleVisibilityChange = () => {
       if (document.visibilityState === "visible") {
-        syncNotifications();
+        scheduleNotificationCheck();
+      } else if (notificationTimer !== undefined) {
+        window.clearTimeout(notificationTimer);
+        notificationTimer = undefined;
       }
     };
 
-    window.addEventListener("focus", handleFocus);
-    window.addEventListener("pageshow", handleFocus);
+    // Service-worker maintenance runs once at startup, never on keyboard focus.
+    void registerServiceWorker().catch(() => undefined);
+    scheduleNotificationCheck();
+
     document.addEventListener("visibilitychange", handleVisibilityChange);
+    window.addEventListener("pointerdown", handleUserActivity, { passive: true });
+    window.addEventListener("keydown", handleUserActivity);
 
     return () => {
-      window.removeEventListener("focus", handleFocus);
-      window.removeEventListener("pageshow", handleFocus);
+      if (notificationTimer !== undefined) window.clearTimeout(notificationTimer);
       document.removeEventListener("visibilitychange", handleVisibilityChange);
+      document.removeEventListener("focusout", handleInputBlur);
+      window.removeEventListener("pointerdown", handleUserActivity);
+      window.removeEventListener("keydown", handleUserActivity);
     };
   }, []);
+
   return (
     <ThemeProvider>
       <div className="mx-auto min-h-screen max-w-md pb-24" style={{ paddingBottom: "calc(6rem + env(safe-area-inset-bottom))" }}>

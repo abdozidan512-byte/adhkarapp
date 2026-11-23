@@ -554,7 +554,18 @@ export async function testNotification() {
   ]);
 }
 
-export async function ensureDailySchedule(reminderMin = 15) {
+let dailyScheduleInFlight: Promise<void> | null = null;
+
+export function ensureDailySchedule(reminderMin = 15): Promise<void> {
+  if (!dailyScheduleInFlight) {
+    dailyScheduleInFlight = runDailySchedule(reminderMin).finally(() => {
+      dailyScheduleInFlight = null;
+    });
+  }
+  return dailyScheduleInFlight;
+}
+
+async function runDailySchedule(reminderMin = 15) {
   if (typeof window === "undefined") return;
   if (localStorage.getItem(STORAGE_KEY) !== "1") return;
 
