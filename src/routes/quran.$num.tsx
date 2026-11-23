@@ -685,7 +685,7 @@ function SurahReader() {
     const deltaY = event.clientY - start.y;
     if (Math.abs(deltaX) < 55 || Math.abs(deltaX) < Math.abs(deltaY) * 1.25) return;
 
-    // In the RTL reader, a leftward swipe advances through the surahs.
+    // Swipe only changes surahs at page boundaries; the carousel handles pages in between.
     if (deltaX < 0 && page === pages.length - 1 && nextSurah) {
       navigateToSurah(nextSurah.number, 0);
     } else if (deltaX > 0 && page === 0 && previousSurah) {
@@ -993,28 +993,6 @@ function SurahReader() {
           ))}
           </div>
         </div>
-        {page === pages.length - 1 && nextSurah && (
-          <button
-            onClick={() => navigateToSurah(nextSurah.number, 0)}
-            className="absolute bottom-3 left-3 z-20 flex max-w-[calc(100%-1.5rem)] items-center gap-1.5 truncate rounded-full border px-3 py-2 text-xs font-bold shadow-lg backdrop-blur-sm"
-            style={{ background: "color-mix(in oklab, var(--card) 88%, transparent)" }}
-            aria-label={`الانتقال إلى سورة ${nextSurah.name}`}
-          >
-            <ChevronLeft className="h-4 w-4 shrink-0" />
-            <span className="truncate">السورة التالية: {nextSurah.name}</span>
-          </button>
-        )}
-        {page === 0 && previousSurah && (
-          <button
-            onClick={() => navigateToSurah(previousSurah.number, -1)}
-            className="absolute bottom-3 right-3 z-20 flex max-w-[calc(100%-1.5rem)] items-center gap-1.5 truncate rounded-full border px-3 py-2 text-xs font-bold shadow-lg backdrop-blur-sm"
-            style={{ background: "color-mix(in oklab, var(--card) 88%, transparent)" }}
-            aria-label={`الانتقال إلى سورة ${previousSurah.name}`}
-          >
-            <ChevronRight className="h-4 w-4 shrink-0" />
-            <span className="truncate">السورة السابقة: {previousSurah.name}</span>
-          </button>
-        )}
       </div>
 
       {/* Additional reading tools, opened from the compact top toolbar. */}
