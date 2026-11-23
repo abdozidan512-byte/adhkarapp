@@ -1,7 +1,11 @@
 import { Link } from "@tanstack/react-router";
-import { memo, useDeferredValue, useMemo, useState } from "react";
+import { memo, useEffect, useMemo, useRef, useState } from "react";
+import type { CompositionEvent, FormEvent } from "react";
 import { BookOpen, ChevronLeft, Search, X } from "lucide-react";
 import { surahs, type Surah } from "@/data/surahs";
+
+const PAGE_SIZE = 16;
+const INPUT_IDLE_MS = 160;
 
 function normalizeSurahQuery(value: string) {
   return value
@@ -31,26 +35,72 @@ const indexedSurahs = surahs.map((surah) => ({
 
 export const SurahSearch = memo(function SurahSearch() {
   const [query, setQuery] = useState("");
-  const deferredQuery = useDeferredValue(query);
-  const normalizedQuery = normalizeSurahQuery(deferredQuery);
-  const tokens = normalizedQuery.split(" ").filter(Boolean);
-  const results = useMemo(() => {
-    if (tokens.length === 0) return indexedSurahs;
+  const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const timerRef = useRef<number | undefined>(undefined);
+  const composingRef = useRef(false);
+
+  const normalizedQuery = normalizeSurahQuery(query);
+  const matches = useMemo(() => {
+    if (!normalizedQuery) return indexedSurahs;
+    const terms = normalizedQuery.split(" ").filter(Boolean);
     return indexedSurahs.filter(({ searchText }) =>
-      tokens.every((token) => searchText.includes(token))
+      terms.every((term) => searchText.includes(term))
     );
   }, [normalizedQuery]);
+  const visibleMatches = matches.slice(0, visibleCount);
+
+  useEffect(() => {
+    return () => {
+      if (timerRef.current !== undefined) window.clearTimeout(timerRef.current);
+    };
+  }, []);
+
+  function scheduleSearch(value: string) {
+    if (timerRef.current !== undefined) window.clearTimeout(timerRef.current);
+    timerRef.current = window.setTimeout(() => {
+      setQuery(value);
+      setVisibleCount(PAGE_SIZE);
+      timerRef.current = undefined;
+    }, INPUT_IDLE_MS);
+  }
+
+  function handleInput(event: FormEvent<HTMLInputElement>) {
+    if (composingRef.current) return;
+    scheduleSearch(event.currentTarget.value);
+  }
+
+  function handleCompositionStart() {
+    composingRef.current = true;
+    if (timerRef.current !== undefined) {
+      window.clearTimeout(timerRef.current);
+      timerRef.current = undefined;
+    }
+  }
+
+  function handleCompositionEnd(event: CompositionEvent<HTMLInputElement>) {
+    composingRef.current = false;
+    scheduleSearch(event.currentTarget.value);
+  }
 
   function clearSearch() {
+    if (timerRef.current !== undefined) window.clearTimeout(timerRef.current);
+    timerRef.current = undefined;
+    composingRef.current = false;
+    if (inputRef.current) inputRef.current.value = "";
     setQuery("");
+    setVisibleCount(PAGE_SIZE);
+    inputRef.current?.focus();
   }
+
+  const hasQuery = normalizedQuery.length > 0;
 
   return (
     <section className="space-y-3" aria-label="البحث عن سور القرآن" dir="rtl">
       <div className="flex items-center justify-between px-1">
         <h2 className="font-extrabold">السور</h2>
         <span className="text-xs text-muted-foreground" aria-live="polite">
-          {deferredQuery.trim() ? results.length + " نتيجة" : "114 سورة"}
+          {hasQuery ? matches.length + " نتيجة" : "114 سورة"}
         </span>
       </div>
 
@@ -60,18 +110,22 @@ export const SurahSearch = memo(function SurahSearch() {
       >
         <Search className="h-5 w-5 shrink-0 text-muted-foreground" aria-hidden="true" />
         <input
+          ref={inputRef}
           type="text"
           inputMode="search"
+          enterKeyHint="search"
           autoComplete="off"
           autoCorrect="off"
+          autoCapitalize="none"
           spellCheck={false}
           maxLength={64}
           aria-label="ابحث باسم السورة أو رقمها"
           aria-controls="surah-search-results"
-          value={query}
-          onChange={(event) => setQuery(event.currentTarget.value)}
+          onInput={handleInput}
+          onCompositionStart={handleCompositionStart}
+          onCompositionEnd={handleCompositionEnd}
           placeholder="ابحث عن سورة أو رقم..."
-          className="min-w-0 flex-1 bg-transparent text-sm outline-none"
+          className="min-w-0 flex-1 bg-transparent text-base outline-none"
         />
         {query.length > 0 && (
           <button
@@ -86,13 +140,24 @@ export const SurahSearch = memo(function SurahSearch() {
       </div>
 
       <div id="surah-search-results" className="space-y-2">
-        {results.map(({ surah }) => (
+        {visibleMatches.map(({ surah }) => (
           <SurahSearchResult key={surah.number} surah={surah} />
         ))}
-        {deferredQuery.trim().length > 0 && results.length === 0 && (
+
+        {hasQuery && matches.length === 0 && (
           <p className="rounded-2xl border py-10 text-center text-sm text-muted-foreground">
             لا توجد سورة مطابقة. جرّب الاسم بالعربية أو الإنجليزية أو رقم السورة.
           </p>
+        )}
+
+        {visibleCount < matches.length && (
+          <button
+            type="button"
+            onClick={() => setVisibleCount((count) => Math.min(count + PAGE_SIZE, matches.length))}
+            className="w-full rounded-2xl border py-3 text-sm font-bold text-primary"
+          >
+            عرض المزيد • {matches.length - visibleCount} سورة
+          </button>
         )}
       </div>
     </section>
@@ -110,10 +175,7 @@ const SurahSearchResult = memo(function SurahSearchResult({ surah }: { surah: Su
     >
       <div
         className="flex h-12 w-12 items-center justify-center rounded-xl text-sm font-bold"
-        style={{
-          background: "var(--gradient-gold)",
-          color: "var(--gold-foreground)",
-        }}
+        style={{ background: "var(--gradient-gold)", color: "var(--gold-foreground)" }}
       >
         {surah.number}
       </div>

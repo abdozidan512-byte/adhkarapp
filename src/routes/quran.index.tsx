@@ -134,6 +134,7 @@ function QuranIndex() {
     <div>
       <PageHeader title="المصحف الشريف" subtitle="114 سورة • تلاوة بأشهر القراء" />
       <div className="space-y-3 px-4 pt-3">
+        <SurahSearch />
         <ContinueReading />
 
         {/* زر تحميل كل السور */}
@@ -175,7 +176,6 @@ function QuranIndex() {
           )}
         </div>
 
-        <SurahSearch />
       </div>
 
       {/* Sheet تحميل كل السور */}
