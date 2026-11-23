@@ -1,5 +1,5 @@
 import { Link } from "@tanstack/react-router";
-import { memo, useMemo, useState } from "react";
+import { memo, useEffect, useMemo, useRef, useState } from "react";
 import { BookOpen, ChevronLeft, Search, X } from "lucide-react";
 import { surahs, type Surah } from "@/data/surahs";
 
@@ -34,6 +34,26 @@ const indexedSurahs = surahs.map((surah) => ({
 export const SurahSearch = memo(function SurahSearch() {
   const [query, setQuery] = useState("");
   const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    const input = inputRef.current;
+    if (!input) return;
+
+    const readNativeValue = () => {
+      setQuery(input.value);
+      setVisibleCount(PAGE_SIZE);
+    };
+
+    input.addEventListener("input", readNativeValue);
+    input.addEventListener("change", readNativeValue);
+    input.addEventListener("compositionend", readNativeValue);
+    return () => {
+      input.removeEventListener("input", readNativeValue);
+      input.removeEventListener("change", readNativeValue);
+      input.removeEventListener("compositionend", readNativeValue);
+    };
+  }, []);
 
   const normalizedQuery = normalizeSurahQuery(query);
   const matches = useMemo(() => {
@@ -48,6 +68,14 @@ export const SurahSearch = memo(function SurahSearch() {
   function handleQueryChange(value: string) {
     setQuery(value);
     setVisibleCount(PAGE_SIZE);
+  }
+
+  function clearSearch() {
+    if (inputRef.current) {
+      inputRef.current.value = "";
+      inputRef.current.focus();
+    }
+    handleQueryChange("");
   }
 
   const hasQuery = normalizedQuery.length > 0;
@@ -67,6 +95,7 @@ export const SurahSearch = memo(function SurahSearch() {
       >
         <Search className="h-5 w-5 shrink-0 text-muted-foreground" aria-hidden="true" />
         <input
+          ref={inputRef}
           type="text"
           inputMode="text"
           enterKeyHint="search"
@@ -77,15 +106,13 @@ export const SurahSearch = memo(function SurahSearch() {
           maxLength={64}
           aria-label="ابحث باسم السورة أو رقمها"
           aria-controls="surah-search-results"
-          value={query}
-          onChange={(event) => handleQueryChange(event.currentTarget.value)}
           placeholder="ابحث عن سورة أو رقم..."
           className="min-w-0 flex-1 bg-transparent text-base outline-none"
         />
         {query.length > 0 && (
           <button
             type="button"
-            onClick={() => handleQueryChange("")}
+            onClick={clearSearch}
             aria-label="مسح البحث"
             className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-muted"
           >
