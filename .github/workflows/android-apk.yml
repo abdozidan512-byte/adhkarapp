@@ -27,6 +27,9 @@ jobs:
       - name: Install dependencies
         run: npm install --legacy-peer-deps
 
+      - name: Patch Android notification seek controls
+        run: node scripts/patch-playlist-notification.mjs
+
       - name: Build web app
         run: npm run build
 
@@ -43,6 +46,9 @@ jobs:
 
       - name: Add Android platform
         run: npx cap add android
+
+      - name: Generate Android launcher icon
+        run: npx --yes @capacitor/assets generate --android
 
       - name: Sync Capacitor
         run: npx cap sync android
