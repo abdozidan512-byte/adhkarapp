@@ -3,7 +3,7 @@ import { Capacitor } from "@capacitor/core";
 import { Playlist } from "@dwbn/capacitor-plugin-playlist";
 import { useEffect, useMemo, useRef, useState } from "react";
 import useEmblaCarousel from "embla-carousel-react";
-import { ChevronRight, Play, Pause, Download, Check, Loader2, Volume2, Palette, Info, BookOpen, X, ListChecks, Repeat2, Rewind, FastForward } from "lucide-react";
+import { ChevronRight, ChevronLeft, Play, Pause, Download, Check, Loader2, Volume2, Palette, Info, BookOpen, X, ListChecks, Repeat2, Rewind, FastForward } from "lucide-react";
 import { surahs, reciters, type ReciterId } from "@/data/surahs";
 import { tajweedLegend } from "@/lib/tajweed";
 import { fetchSurahTafsir, tafsirEditions, type TafsirAyah } from "@/lib/tafsir";
@@ -92,6 +92,7 @@ async function downloadConcurrently<T>(
 function SurahReader() {
   const meta = Route.useLoaderData();
   const search = Route.useSearch();
+  const navigate = Route.useNavigate();
   const [ayahs, setAyahs] = useState<QuranAyah[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [reciter, setReciter] = useState<ReciterId>("ar.yasser");
@@ -176,9 +177,14 @@ function SurahReader() {
 
   const [emblaRef, emblaApi] = useEmblaCarousel({ direction: "rtl", align: "center", loop: false });
   const [page, setPage] = useState(0);
+  const previousSurah = surahs.find((surah) => surah.number === meta.number - 1);
+  const nextSurah = surahs.find((surah) => surah.number === meta.number + 1);
+  const swipeStartRef = useRef<{ x: number; y: number } | null>(null);
 
   useEffect(() => {
     let alive = true;
+    setAyahs(null);
+    setPage(0);
     setError(null);
     fetchSurahText(meta.number)
       .then((a) => alive && setAyahs(a))
@@ -314,10 +320,16 @@ function SurahReader() {
     emblaApi.reInit();
   }, [emblaApi, pages.length]);
 
-  // Jump to ?page= once carousel & ayahs are ready
+  // Start each newly opened surah at its first page before applying a requested boundary page.
   useEffect(() => {
-    if (!emblaApi || !ayahs || search.page === undefined) return;
-    const target = Math.max(0, Math.min(pages.length - 1, search.page));
+    if (!emblaApi) return;
+    emblaApi.scrollTo(0, true);
+  }, [emblaApi, meta.number]);
+
+  // Jump to ?page= once carousel & ayahs are ready. A negative page selects the final page.
+  useEffect(() => {
+    if (!emblaApi || !ayahs || search.page === undefined || pages.length === 0) return;
+    const target = search.page < 0 ? pages.length - 1 : Math.max(0, Math.min(pages.length - 1, search.page));
     emblaApi.scrollTo(target, true);
   }, [emblaApi, ayahs, search.page, pages.length]);
 
@@ -649,6 +661,38 @@ function SurahReader() {
     repeatSelectedRef.current = false;
   }
 
+  function navigateToSurah(surahNumber: number, initialPage: 0 | -1) {
+    const target = surahs.find((surah) => surah.number === surahNumber);
+    if (!target) return;
+    stopPlay();
+    void navigate({
+      to: "/quran/$num",
+      params: { num: String(target.number) },
+      search: { page: initialPage },
+    });
+  }
+
+  function handleReaderPointerDown(event: { clientX: number; clientY: number }) {
+    swipeStartRef.current = { x: event.clientX, y: event.clientY };
+  }
+
+  function handleReaderPointerUp(event: { clientX: number; clientY: number }) {
+    const start = swipeStartRef.current;
+    swipeStartRef.current = null;
+    if (!start || pages.length === 0) return;
+
+    const deltaX = event.clientX - start.x;
+    const deltaY = event.clientY - start.y;
+    if (Math.abs(deltaX) < 55 || Math.abs(deltaX) < Math.abs(deltaY) * 1.25) return;
+
+    // In the RTL reader, a leftward swipe advances through the surahs.
+    if (deltaX < 0 && page === pages.length - 1 && nextSurah) {
+      navigateToSurah(nextSurah.number, 0);
+    } else if (deltaX > 0 && page === 0 && previousSurah) {
+      navigateToSurah(previousSurah.number, -1);
+    }
+  }
+
   function playFullSurah() {
     // Prefer one continuous audio file for a full-surah request. If that
     // stream fails, fallBackToCachedAudio tries a local copy and then ayah files.
@@ -916,8 +960,9 @@ function SurahReader() {
       {audioError && <div role="alert" className="relative z-30 mx-3 mt-2 rounded-xl border border-destructive/30 bg-destructive/10 px-3 py-2 text-xs font-bold text-destructive">{audioError}</div>}
 
       {/* The Mushaf page stays in its own reading area between the controls and footer. */}
-      <div className="relative min-h-0 flex-1 overflow-hidden" ref={emblaRef}>
-        <div className="flex h-full w-full">
+      <div className="relative min-h-0 flex-1 overflow-hidden">
+        <div className="absolute inset-0" ref={emblaRef} onPointerDown={handleReaderPointerDown} onPointerUp={handleReaderPointerUp} onPointerCancel={() => { swipeStartRef.current = null; }}>
+          <div className="flex h-full w-full">
           {pages.map((pg, idx) => (
             <div key={pg.mushafPage} className="h-full min-w-0 shrink-0 grow-0 basis-full">
               <div className="relative flex h-full w-full items-center justify-center p-0">
@@ -946,7 +991,30 @@ function SurahReader() {
               </div>
             </div>
           ))}
+          </div>
         </div>
+        {page === pages.length - 1 && nextSurah && (
+          <button
+            onClick={() => navigateToSurah(nextSurah.number, 0)}
+            className="absolute bottom-3 left-3 z-20 flex max-w-[calc(100%-1.5rem)] items-center gap-1.5 truncate rounded-full border px-3 py-2 text-xs font-bold shadow-lg backdrop-blur-sm"
+            style={{ background: "color-mix(in oklab, var(--card) 88%, transparent)" }}
+            aria-label={`الانتقال إلى سورة ${nextSurah.name}`}
+          >
+            <ChevronLeft className="h-4 w-4 shrink-0" />
+            <span className="truncate">السورة التالية: {nextSurah.name}</span>
+          </button>
+        )}
+        {page === 0 && previousSurah && (
+          <button
+            onClick={() => navigateToSurah(previousSurah.number, -1)}
+            className="absolute bottom-3 right-3 z-20 flex max-w-[calc(100%-1.5rem)] items-center gap-1.5 truncate rounded-full border px-3 py-2 text-xs font-bold shadow-lg backdrop-blur-sm"
+            style={{ background: "color-mix(in oklab, var(--card) 88%, transparent)" }}
+            aria-label={`الانتقال إلى سورة ${previousSurah.name}`}
+          >
+            <ChevronRight className="h-4 w-4 shrink-0" />
+            <span className="truncate">السورة السابقة: {previousSurah.name}</span>
+          </button>
+        )}
       </div>
 
       {/* Additional reading tools, opened from the compact top toolbar. */}
