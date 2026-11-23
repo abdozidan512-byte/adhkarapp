@@ -80,6 +80,8 @@ function RootComponent() {
         (active.matches("input, textarea, select") || active.isContentEditable);
     };
 
+    const isQuranRoute = () => window.location.pathname.startsWith("/quran");
+
     const handleControllerChange = () => {
       if (isEditing()) {
         reloadAfterBlur = true;
@@ -145,7 +147,7 @@ function RootComponent() {
 
     const runNotificationCheck = () => {
       notificationTimer = undefined;
-      if (document.visibilityState !== "visible") return;
+      if (document.visibilityState !== "visible" || isQuranRoute()) return;
       if (isEditing()) {
         if (!waitingForInputToBlur) {
           waitingForInputToBlur = true;
@@ -165,11 +167,14 @@ function RootComponent() {
     };
 
     const scheduleNotificationCheck = (delay = 1600) => {
+      if (isQuranRoute()) return;
       if (notificationTimer !== undefined) window.clearTimeout(notificationTimer);
       notificationTimer = window.setTimeout(runNotificationCheck, delay);
     };
 
-    const handleUserActivity = () => scheduleNotificationCheck();
+    const handleUserActivity = () => {
+      if (!isQuranRoute()) scheduleNotificationCheck();
+    };
     const handleVisibilityChange = () => {
       if (document.visibilityState === "visible") {
         scheduleNotificationCheck();
@@ -181,7 +186,7 @@ function RootComponent() {
 
     // Android's localhost origin removes web workers; normal web installs register once.
     void registerServiceWorker().catch(() => undefined);
-    scheduleNotificationCheck();
+    if (!isQuranRoute()) scheduleNotificationCheck();
 
     document.addEventListener("visibilitychange", handleVisibilityChange);
     window.addEventListener("pointerdown", handleUserActivity, { passive: true });
