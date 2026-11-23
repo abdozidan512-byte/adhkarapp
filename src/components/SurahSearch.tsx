@@ -19,7 +19,7 @@ export const SurahSearch = memo(function SurahSearch() {
 
     return surahs.filter((surah) => {
       const searchableName = normalizeSearchText(
-        \`سورة \${surah.name} \${surah.englishName} \${surah.number}\`,
+        "سورة " + surah.name + " " + surah.englishName + " " + surah.number,
       );
       return searchableName.includes(searchText);
     });
@@ -30,7 +30,7 @@ export const SurahSearch = memo(function SurahSearch() {
       <div className="flex items-center justify-between px-1">
         <h2 className="font-extrabold">السور</h2>
         <span className="text-xs text-muted-foreground" aria-live="polite">
-          {query.trim() ? \`\${results.length} نتيجة\` : "114 سورة"}
+          {query.trim() ? results.length + " نتيجة" : "114 سورة"}
         </span>
       </div>
 
