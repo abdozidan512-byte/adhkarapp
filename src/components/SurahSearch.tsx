@@ -8,7 +8,7 @@ const PAGE_SIZE = 16;
 function normalizeSurahQuery(value: string) {
   return value
     .normalize("NFKD")
-    .replace(/[\\u0610-\\u061A\\u064B-\\u065F\\u0670\\u06D6-\\u06ED\\u0640]/g, "")
+    .replace(/[\u0610-\u061A\u064B-\u065F\u0670\u06D6-\u06ED\u0640]/g, "")
     .replace(/[أإآٱ]/g, "ا")
     .replace(/ى/g, "ي")
     .replace(/ؤ/g, "و")
@@ -17,9 +17,9 @@ function normalizeSurahQuery(value: string) {
     .replace(/[٠-٩]/g, (digit) => String(digit.charCodeAt(0) - 0x0660))
     .replace(/[۰-۹]/g, (digit) => String(digit.charCodeAt(0) - 0x06f0))
     .toLowerCase()
-    .replace(/[^a-z0-9\\u0600-\\u06ff]+/g, " ")
+    .replace(/[^a-z0-9\u0600-\u06ff]+/g, " ")
     .trim()
-    .replace(/\\s+/g, " ");
+    .replace(/\s+/g, " ");
 }
 
 const indexedSurahs = surahs.map((surah) => ({
@@ -48,10 +48,6 @@ export const SurahSearch = memo(function SurahSearch() {
   function handleQueryChange(value: string) {
     setQuery(value);
     setVisibleCount(PAGE_SIZE);
-  }
-
-  function clearSearch() {
-    handleQueryChange("");
   }
 
   const hasQuery = normalizedQuery.length > 0;
@@ -89,7 +85,7 @@ export const SurahSearch = memo(function SurahSearch() {
         {query.length > 0 && (
           <button
             type="button"
-            onClick={clearSearch}
+            onClick={() => handleQueryChange("")}
             aria-label="مسح البحث"
             className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-muted"
           >
