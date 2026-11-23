@@ -214,8 +214,9 @@ export async function downloadMushafPage(
         await saveMushafPage(page, mode, blob, edition);
         return blob;
       } catch (error) {
-        // Keep previously downloaded pages readable until the replacement is available.
-        if (cached?.blob && !signal?.aborted) return cached.blob;
+        // Never mix an outdated Tajweed edition into the current set of pages.
+        // The standard Mushaf remains reusable because its edition has not changed.
+        if (cached?.blob && !signal?.aborted && (mode === "clear" || cached.edition === edition)) return cached.blob;
         throw error;
       }
     })();

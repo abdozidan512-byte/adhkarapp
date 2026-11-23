@@ -924,14 +924,14 @@ function SurahReader() {
               className="h-full min-w-0 shrink-0 grow-0 basis-full"
               style={{ flex: "0 0 100%", width: "100%" }}
             >
-              <div className="relative h-full w-full overflow-hidden">
+              <div className="relative flex h-full w-full items-center justify-center overflow-hidden p-0">
                 {idx === page && !pageImageLoaded && !pageImageError && (
                   <Loader2 className="absolute h-8 w-8 animate-spin text-muted-foreground" aria-label="جارٍ تحميل صفحة المصحف" />
                 )}
                 {idx === page && pageImageError ? (
                   <div className="mx-6 rounded-2xl border bg-card p-5 text-center text-sm shadow-lg">
                     <p className="font-bold">تعذّر تحميل صورة الصفحة</p>
-                    <p className="mt-2 text-xs text-muted-foreground">الصفحة غير محفوظة بعد. اتصل بالإنترنت لتنزيلها أو نزّل المصحف من صفحة السور.</p>
+                    <p className="mt-2 text-xs text-muted-foreground">هذه الصفحة تحتاج إلى تحديث. اتصل بالإنترنت لتنزيلها أو نزّل صفحات السورة من جديد.</p>
                     <button onClick={() => setImageRetry((value) => value + 1)} className="mt-4 rounded-full px-4 py-2 text-xs font-bold text-primary-foreground" style={{ background: "var(--gradient-primary)" }}>إعادة المحاولة</button>
                   </div>
                 ) : Math.abs(idx - page) <= 1 && (idx !== page || !!pageImageSrc) ? (
@@ -939,10 +939,10 @@ function SurahReader() {
                     key={`${pg.mushafPage}-${tajweedMode}-${idx === page ? imageRetry : 0}`}
                     src={idx === page ? pageImageSrc : getMushafPageImageUrl(pg.mushafPage, tajweedMode ? "tajweed" : "clear")}
                     alt={`صفحة المصحف ${pg.mushafPage} من سورة ${meta.name}`}
-                    className="select-none"
-                    // The scanned page sits within a larger paper canvas. Crop that canvas
-                    // so the Mushaf page itself fills the reader without showing the side notes.
-                    style={{
+                    className={cn("select-none", !tajweedMode && "h-full w-full object-fill")}
+                    // Keep the original full-page rendering for the standard Mushaf.
+                    // Apply the frame crop only to Tajweed pages.
+                    style={tajweedMode ? {
                       position: "absolute",
                       left: 0,
                       top: "-8.5%",
@@ -950,7 +950,7 @@ function SurahReader() {
                       height: "116%",
                       maxWidth: "none",
                       objectFit: "fill",
-                    }}
+                    } : undefined}
                     draggable={false}
                     loading={idx === page ? "eager" : "lazy"}
                     decoding="async"
