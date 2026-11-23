@@ -44,13 +44,13 @@ await replaceExactlyOnce(
   `    private val seekBackFiveButton = CommandButton.Builder(CommandButton.ICON_SKIP_BACK_5)
         .setDisplayName("الرجوع ٥ ثوانٍ")
         .setPlayerCommand(Player.COMMAND_SEEK_BACK)
-        .setSlots(intArrayOf(CommandButton.SLOT_OVERFLOW))
+        .setSlots(CommandButton.SLOT_OVERFLOW)
         .build()
 
     private val seekForwardFiveButton = CommandButton.Builder(CommandButton.ICON_SKIP_FORWARD_5)
         .setDisplayName("التقديم ٥ ثوانٍ")
         .setPlayerCommand(Player.COMMAND_SEEK_FORWARD)
-        .setSlots(intArrayOf(CommandButton.SLOT_OVERFLOW))
+        .setSlots(CommandButton.SLOT_OVERFLOW)
         .build()
 
     data class SkipAvailability(`,
