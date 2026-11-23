@@ -4,7 +4,7 @@ import { ChevronLeft, Download, Check, X } from "lucide-react";
 import { surahs, reciters, type ReciterId } from "@/data/surahs";
 import { PageHeader } from "@/components/PageHeader";
 import { ContinueReading } from "@/components/ContinueReading";
-import { SurahSearch } from "@/components/SurahSearch";
+import { SurahFinder } from "@/components/SurahFinder";
 import { downloadFullSurah, downloadMushafPage, fetchSurahText, audioKey } from "@/lib/quran-api";
 import { getCachedAudioKeys, getCachedMushafPageKeys, getCachedSurahNumbers } from "@/lib/db";
 
@@ -134,7 +134,7 @@ function QuranIndex() {
     <div>
       <PageHeader title="المصحف الشريف" subtitle="114 سورة • تلاوة بأشهر القراء" />
       <div className="space-y-3 px-4 pt-3">
-        <SurahSearch />
+        <SurahFinder />
         <ContinueReading />
 
         {/* زر تحميل كل السور */}
