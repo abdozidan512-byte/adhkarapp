@@ -15,7 +15,6 @@ import {
   audioKey,
   getFullSurahAudioUrl,
   getFullSurahBlob,
-  getMushafPageImageUrl,
   downloadMushafPage,
   downloadFullSurah,
 } from "@/lib/quran-api";
@@ -89,38 +88,108 @@ async function downloadConcurrently<T>(
   return failures;
 }
 
-async function detectTajweedCropSide(blob: Blob): Promise<"left" | "right"> {
-  if (typeof createImageBitmap !== "function") return "left";
+async function cropTajweedPage(blob: Blob): Promise<Blob> {
   let bitmap: ImageBitmap | null = null;
+  let imageUrl: string | null = null;
+  let imageFallback: HTMLImageElement | null = null;
   try {
-    bitmap = await createImageBitmap(blob);
-    const canvas = document.createElement("canvas");
-    canvas.width = 96;
-    canvas.height = 128;
-    const context = canvas.getContext("2d", { willReadFrequently: true });
-    if (!context) return "left";
-    context.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
-    const pixels = context.getImageData(0, 0, canvas.width, canvas.height).data;
-    let leftInk = 0;
-    let rightInk = 0;
-    for (let y = 12; y < 116; y++) {
-      for (let x = 4; x < 92; x++) {
-        const offset = (y * canvas.width + x) * 4;
+    let source: CanvasImageSource;
+    let sourceWidth: number;
+    let sourceHeight: number;
+    if (typeof createImageBitmap === "function") {
+      bitmap = await createImageBitmap(blob);
+      source = bitmap;
+      sourceWidth = bitmap.width;
+      sourceHeight = bitmap.height;
+    } else {
+      imageUrl = URL.createObjectURL(blob);
+      imageFallback = new Image();
+      imageFallback.src = imageUrl;
+      await imageFallback.decode();
+      source = imageFallback;
+      sourceWidth = imageFallback.naturalWidth;
+      sourceHeight = imageFallback.naturalHeight;
+    }
+
+    const sampleWidth = 256;
+    const sampleHeight = Math.round((sampleWidth * sourceHeight) / sourceWidth);
+    const sample = document.createElement("canvas");
+    sample.width = sampleWidth;
+    sample.height = sampleHeight;
+    const sampleContext = sample.getContext("2d", { willReadFrequently: true });
+    if (!sampleContext) return blob;
+    sampleContext.drawImage(source, 0, 0, sampleWidth, sampleHeight);
+    const pixels = sampleContext.getImageData(0, 0, sampleWidth, sampleHeight).data;
+    const columns = new Uint16Array(sampleWidth);
+    const scanTop = Math.floor(sampleHeight * 0.06);
+    const scanBottom = Math.ceil(sampleHeight * 0.9);
+    for (let y = scanTop; y < scanBottom; y++) {
+      for (let x = 0; x < sampleWidth; x++) {
+        const offset = (y * sampleWidth + x) * 4;
         const red = pixels[offset];
         const green = pixels[offset + 1];
         const blue = pixels[offset + 2];
-        const brightness = (red + green + blue) / 3;
-        const chroma = Math.max(red, green, blue) - Math.min(red, green, blue);
-        const ink = brightness < 168 ? 1 : chroma > 55 && brightness < 240 ? 0.45 : 0;
-        if (x < 48) leftInk += ink;
-        else rightInk += ink;
+        const brightest = Math.max(red, green, blue);
+        const chroma = brightest - Math.min(red, green, blue);
+        if (chroma > 45 && brightest > 65 && brightest < 252) columns[x]++;
       }
     }
-    return rightInk > leftInk * 1.38 ? "right" : "left";
+
+    const midpoint = Math.floor(sampleWidth / 2);
+    let leftPeak = 0;
+    let leftPeakX = 0;
+    let rightPeak = 0;
+    let rightPeakX = midpoint;
+    for (let x = 0; x < midpoint; x++) {
+      if (columns[x] > leftPeak) {
+        leftPeak = columns[x];
+        leftPeakX = x;
+      }
+    }
+    for (let x = midpoint; x < sampleWidth; x++) {
+      if (columns[x] > rightPeak) {
+        rightPeak = columns[x];
+        rightPeakX = x;
+      }
+    }
+    const scanHeight = scanBottom - scanTop;
+    if (
+      leftPeak < scanHeight * 0.2 ||
+      rightPeak < scanHeight * 0.2 ||
+      rightPeakX - leftPeakX < sampleWidth * 0.55
+    ) return blob;
+
+    const findRail = (peakX: number, peak: number) => {
+      const threshold = Math.max(8, peak * 0.18);
+      let start = peakX;
+      let end = peakX;
+      while (start > 0 && columns[start - 1] >= threshold) start--;
+      while (end < sampleWidth - 1 && columns[end + 1] >= threshold) end++;
+      return { start, end };
+    };
+    const leftRail = findRail(leftPeakX, leftPeak);
+    const rightRail = findRail(rightPeakX, rightPeak);
+    const leftSampleX = Math.max(0, leftRail.start - 1);
+    const rightSampleX = Math.min(sampleWidth, rightRail.end + 2);
+    const cropLeft = Math.floor((leftSampleX * sourceWidth) / sampleWidth);
+    const cropRight = Math.ceil((rightSampleX * sourceWidth) / sampleWidth);
+    const cropWidth = cropRight - cropLeft;
+    if (cropWidth < sourceWidth * 0.55 || cropWidth > sourceWidth * 0.97) return blob;
+
+    const cropped = document.createElement("canvas");
+    cropped.width = cropWidth;
+    cropped.height = sourceHeight;
+    const croppedContext = cropped.getContext("2d");
+    if (!croppedContext) return blob;
+    croppedContext.drawImage(source, cropLeft, 0, cropWidth, sourceHeight, 0, 0, cropWidth, sourceHeight);
+    return await new Promise<Blob>((resolve) => {
+      cropped.toBlob((result) => resolve(result ?? blob), "image/png");
+    });
   } catch {
-    return "left";
+    return blob;
   } finally {
     bitmap?.close();
+    if (imageUrl) URL.revokeObjectURL(imageUrl);
   }
 }
 
@@ -141,8 +210,7 @@ function SurahReader() {
   const [showReaderActions, setShowReaderActions] = useState(false);
   const [pageImageLoaded, setPageImageLoaded] = useState(false);
   const [pageImageError, setPageImageError] = useState(false);
-  const [pageImageSrc, setPageImageSrc] = useState("");
-  const [pageCropSides, setPageCropSides] = useState<Record<number, "left" | "right">>({});
+  const [pageImageSrcs, setPageImageSrcs] = useState<Record<number, string>>({});
   const [imageRetry, setImageRetry] = useState(0);
   const [showAyahSelection, setShowAyahSelection] = useState(false);
   const [selectedAyahs, setSelectedAyahs] = useState<number[]>([]);
@@ -307,51 +375,45 @@ function SurahReader() {
   }, [ayahs]);
 
   useEffect(() => {
-    const mushafPage = pages[page]?.mushafPage;
-    if (!mushafPage) return;
+    const current = pages[page];
+    if (!current) return;
     let active = true;
-    let objectUrl: string | null = null;
+    const objectUrls: string[] = [];
     const mode = tajweedMode ? "tajweed" : "clear";
     setPageImageLoaded(false);
     setPageImageError(false);
-    setPageImageSrc("");
+    setPageImageSrcs({});
 
-    downloadMushafPage(mushafPage, mode)
-      .then(async (blob) => {
+    const loadPage = async (mushafPage: number) => {
+      const rawBlob = await downloadMushafPage(mushafPage, mode);
+      const displayBlob = mode === "tajweed" ? await cropTajweedPage(rawBlob) : rawBlob;
+      const objectUrl = URL.createObjectURL(displayBlob);
+      if (!active) {
+        URL.revokeObjectURL(objectUrl);
+        return;
+      }
+      objectUrls.push(objectUrl);
+      setPageImageSrcs((currentSources) => ({ ...currentSources, [mushafPage]: objectUrl }));
+    };
+
+    void loadPage(current.mushafPage)
+      .then(() => {
         if (!active) return;
-        if (mode === "tajweed") {
-          const side = await detectTajweedCropSide(blob);
-          if (!active) return;
-          setPageCropSides((current) => ({ ...current, [mushafPage]: side }));
-        }
-        objectUrl = URL.createObjectURL(blob);
-        setPageImageSrc(objectUrl);
-
-        // Warm the nearby page cache after the visible page is ready so
-        // the next swipe reads from IndexedDB instead of waiting on the network.
-        const nearbyPages = [...new Set([
+        const adjacentPages = [
           pages[page - 1]?.mushafPage,
           pages[page + 1]?.mushafPage,
-          pages[page + 2]?.mushafPage,
-        ].filter((value): value is number => typeof value === "number"))];
-        for (const adjacent of nearbyPages) {
-          const image = new Image();
-          image.src = getMushafPageImageUrl(adjacent, mode);
-          void downloadMushafPage(adjacent, mode)
-            .then(async (adjacentBlob) => {
-              if (!active || mode !== "tajweed") return;
-              const side = await detectTajweedCropSide(adjacentBlob);
-              if (active) setPageCropSides((current) => ({ ...current, [adjacent]: side }));
-            })
-            .catch(() => undefined);
-        }
+        ].filter((value): value is number => typeof value === "number");
+        void Promise.all(adjacentPages.map((mushafPage) => loadPage(mushafPage).catch(() => undefined)));
+        const pageToWarm = pages[page + 2]?.mushafPage;
+        if (typeof pageToWarm === "number") void downloadMushafPage(pageToWarm, mode).catch(() => undefined);
       })
       .catch(() => {
         if (active) setPageImageError(true);
       });
+
     return () => {
       active = false;
-      if (objectUrl) URL.revokeObjectURL(objectUrl);
+      objectUrls.forEach((objectUrl) => URL.revokeObjectURL(objectUrl));
     };
   }, [pages, page, tajweedMode, imageRetry]);
 
@@ -981,23 +1043,12 @@ function SurahReader() {
                     <p className="mt-2 text-xs text-muted-foreground">هذه الصفحة تحتاج إلى تحديث. اتصل بالإنترنت لتنزيلها أو نزّل صفحات السورة من جديد.</p>
                     <button onClick={() => setImageRetry((value) => value + 1)} className="mt-4 rounded-full px-4 py-2 text-xs font-bold text-primary-foreground" style={{ background: "var(--gradient-primary)" }}>إعادة المحاولة</button>
                   </div>
-                ) : Math.abs(idx - page) <= 1 && (idx !== page || !!pageImageSrc) ? (
+                ) : Math.abs(idx - page) <= 1 && !!pageImageSrcs[pg.mushafPage] ? (
                   <img
                     key={`${pg.mushafPage}-${tajweedMode}-${idx === page ? imageRetry : 0}`}
-                    src={idx === page ? pageImageSrc : getMushafPageImageUrl(pg.mushafPage, tajweedMode ? "tajweed" : "clear")}
+                    src={pageImageSrcs[pg.mushafPage]}
                     alt={`صفحة المصحف ${pg.mushafPage} من سورة ${meta.name}`}
-                    className={cn("select-none", !tajweedMode && "h-full w-full object-fill")}
-                    // Keep the original full-page rendering for the standard Mushaf.
-                    // Apply the frame crop only to Tajweed pages.
-                    style={tajweedMode ? {
-                      position: "absolute",
-                      ...(pageCropSides[pg.mushafPage] === "right" ? { right: 0 } : { left: 0 }),
-                      top: "-8.5%",
-                      width: "125%",
-                      height: "116%",
-                      maxWidth: "none",
-                      objectFit: "fill",
-                    } : undefined}
+                    className={cn("h-full w-full select-none", tajweedMode ? "object-contain" : "object-fill")}
                     draggable={false}
                     loading={idx === page ? "eager" : "lazy"}
                     decoding="async"
