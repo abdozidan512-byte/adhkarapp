@@ -91,7 +91,6 @@ async function downloadConcurrently<T>(
 async function cropTajweedPage(blob: Blob): Promise<Blob> {
   let bitmap: ImageBitmap | null = null;
   let imageUrl: string | null = null;
-  let imageFallback: HTMLImageElement | null = null;
   try {
     let source: CanvasImageSource;
     let sourceWidth: number;
@@ -103,12 +102,12 @@ async function cropTajweedPage(blob: Blob): Promise<Blob> {
       sourceHeight = bitmap.height;
     } else {
       imageUrl = URL.createObjectURL(blob);
-      imageFallback = new Image();
-      imageFallback.src = imageUrl;
-      await imageFallback.decode();
-      source = imageFallback;
-      sourceWidth = imageFallback.naturalWidth;
-      sourceHeight = imageFallback.naturalHeight;
+      const image = new Image();
+      image.src = imageUrl;
+      await image.decode();
+      source = image;
+      sourceWidth = image.naturalWidth;
+      sourceHeight = image.naturalHeight;
     }
 
     const sampleWidth = 256;
@@ -121,6 +120,7 @@ async function cropTajweedPage(blob: Blob): Promise<Blob> {
     sampleContext.drawImage(source, 0, 0, sampleWidth, sampleHeight);
     const pixels = sampleContext.getImageData(0, 0, sampleWidth, sampleHeight).data;
     const columns = new Uint16Array(sampleWidth);
+    const redColumns = new Uint16Array(sampleWidth);
     const scanTop = Math.floor(sampleHeight * 0.06);
     const scanBottom = Math.ceil(sampleHeight * 0.9);
     for (let y = scanTop; y < scanBottom; y++) {
@@ -132,56 +132,121 @@ async function cropTajweedPage(blob: Blob): Promise<Blob> {
         const brightest = Math.max(red, green, blue);
         const chroma = brightest - Math.min(red, green, blue);
         if (chroma > 45 && brightest > 65 && brightest < 252) columns[x]++;
+        if (red > 120 && red > green * 1.4 && red > blue * 1.25) redColumns[x]++;
       }
     }
 
     const midpoint = Math.floor(sampleWidth / 2);
-    let leftPeak = 0;
-    let leftPeakX = 0;
-    let rightPeak = 0;
-    let rightPeakX = midpoint;
-    for (let x = 0; x < midpoint; x++) {
-      if (columns[x] > leftPeak) {
-        leftPeak = columns[x];
-        leftPeakX = x;
+    const findPeak = (values: Uint16Array, start: number, end: number) => {
+      let peak = 0;
+      let peakX = start;
+      for (let x = start; x < end; x++) {
+        if (values[x] > peak) {
+          peak = values[x];
+          peakX = x;
+        }
       }
-    }
-    for (let x = midpoint; x < sampleWidth; x++) {
-      if (columns[x] > rightPeak) {
-        rightPeak = columns[x];
-        rightPeakX = x;
-      }
-    }
+      return { peak, peakX };
+    };
+    const colorLeft = findPeak(columns, 0, midpoint);
+    const colorRight = findPeak(columns, midpoint, sampleWidth);
+    const redLeft = findPeak(redColumns, 0, midpoint);
+    const redRight = findPeak(redColumns, midpoint, sampleWidth);
     const scanHeight = scanBottom - scanTop;
+    const hasRedFrame =
+      redLeft.peak >= scanHeight * 0.2 &&
+      redRight.peak >= scanHeight * 0.2 &&
+      redRight.peakX - redLeft.peakX >= sampleWidth * 0.45;
+    const railColumns = hasRedFrame ? redColumns : columns;
+    const leftPeak = hasRedFrame ? redLeft : colorLeft;
+    const rightPeak = hasRedFrame ? redRight : colorRight;
     if (
-      leftPeak < scanHeight * 0.2 ||
-      rightPeak < scanHeight * 0.2 ||
-      rightPeakX - leftPeakX < sampleWidth * 0.55
+      leftPeak.peak < scanHeight * 0.2 ||
+      rightPeak.peak < scanHeight * 0.2 ||
+      rightPeak.peakX - leftPeak.peakX < sampleWidth * 0.55
     ) return blob;
 
     const findRail = (peakX: number, peak: number) => {
       const threshold = Math.max(8, peak * 0.18);
       let start = peakX;
       let end = peakX;
-      while (start > 0 && columns[start - 1] >= threshold) start--;
-      while (end < sampleWidth - 1 && columns[end + 1] >= threshold) end++;
+      while (start > 0 && railColumns[start - 1] >= threshold) start--;
+      while (end < sampleWidth - 1 && railColumns[end + 1] >= threshold) end++;
       return { start, end };
     };
-    const leftRail = findRail(leftPeakX, leftPeak);
-    const rightRail = findRail(rightPeakX, rightPeak);
-    const leftSampleX = Math.max(0, leftRail.start - 1);
+    const leftRail = findRail(leftPeak.peakX, leftPeak.peak);
+    const rightRail = findRail(rightPeak.peakX, rightPeak.peak);
+    // Start at the page rail so explanatory text beside it is excluded.
+    const leftSampleX = Math.max(0, leftRail.start + 1);
     const rightSampleX = Math.min(sampleWidth, rightRail.end + 2);
+    const sampleCropWidth = rightSampleX - leftSampleX;
     const cropLeft = Math.floor((leftSampleX * sourceWidth) / sampleWidth);
     const cropRight = Math.ceil((rightSampleX * sourceWidth) / sampleWidth);
     const cropWidth = cropRight - cropLeft;
     if (cropWidth < sourceWidth * 0.55 || cropWidth > sourceWidth * 0.97) return blob;
 
+    const rows = new Uint16Array(sampleHeight);
+    const redRows = new Uint16Array(sampleHeight);
+    for (let y = 0; y < sampleHeight; y++) {
+      for (let x = leftSampleX; x < rightSampleX; x++) {
+        const offset = (y * sampleWidth + x) * 4;
+        const red = pixels[offset];
+        const green = pixels[offset + 1];
+        const blue = pixels[offset + 2];
+        const brightest = Math.max(red, green, blue);
+        const chroma = brightest - Math.min(red, green, blue);
+        const brightness = (red + green + blue) / 3;
+        if ((chroma > 45 && brightest > 65 && brightest < 252) || brightness < 185) rows[y]++;
+        if (red > 120 && red > green * 1.4 && red > blue * 1.25) redRows[y]++;
+      }
+    }
+
+    const rowThreshold = Math.max(2, Math.round(sampleCropWidth * 0.006));
+    let contentTop = -1;
+    let contentBottom = -1;
+    for (let y = 0; y < sampleHeight; y++) {
+      if (rows[y] >= rowThreshold) {
+        if (contentTop < 0) contentTop = y;
+        contentBottom = y;
+      }
+    }
+    if (contentTop < 0 || contentBottom - contentTop < sampleHeight * 0.4) return blob;
+
+    // The opening page has a red inner frame and explanatory notes outside it.
+    // Use that frame to stop before the notes; ordinary pages retain their page number.
+    let redTop = -1;
+    let redBottom = -1;
+    const redRowThreshold = Math.max(8, Math.round(sampleCropWidth * 0.45));
+    for (let y = Math.floor(sampleHeight * 0.04); y < Math.ceil(sampleHeight * 0.94); y++) {
+      if (redRows[y] >= redRowThreshold) {
+        if (redTop < 0) redTop = y;
+        redBottom = y;
+      }
+    }
+    const useRedFrame = redTop >= 0 && redBottom - redTop > sampleHeight * 0.2;
+    const cropTopSample = Math.max(0, (useRedFrame ? redTop : contentTop) - 3);
+    const cropBottomSample = Math.min(sampleHeight, (useRedFrame ? redBottom : contentBottom) + 5);
+    const cropTop = Math.floor((cropTopSample * sourceHeight) / sampleHeight);
+    const cropBottom = Math.ceil((cropBottomSample * sourceHeight) / sampleHeight);
+    const cropHeight = cropBottom - cropTop;
+    if (cropHeight < sourceHeight * 0.4 || cropHeight > sourceHeight * 0.98) return blob;
+
     const cropped = document.createElement("canvas");
     cropped.width = cropWidth;
-    cropped.height = sourceHeight;
+    cropped.height = cropHeight;
     const croppedContext = cropped.getContext("2d");
     if (!croppedContext) return blob;
-    croppedContext.drawImage(source, cropLeft, 0, cropWidth, sourceHeight, 0, 0, cropWidth, sourceHeight);
+    croppedContext.drawImage(
+      source,
+      cropLeft,
+      cropTop,
+      cropWidth,
+      cropHeight,
+      0,
+      0,
+      cropWidth,
+      cropHeight,
+    );
     return await new Promise<Blob>((resolve) => {
       cropped.toBlob((result) => resolve(result ?? blob), "image/png");
     });
