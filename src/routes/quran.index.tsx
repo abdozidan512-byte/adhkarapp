@@ -4,8 +4,8 @@ import { Search, ChevronLeft, BookOpen, Download, Check, X } from "lucide-react"
 import { surahs, reciters, type ReciterId } from "@/data/surahs";
 import { PageHeader } from "@/components/PageHeader";
 import { ContinueReading } from "@/components/ContinueReading";
-import { downloadFullSurah, downloadMushafPage, fetchSurahText, audioKey } from "@/lib/quran-api";
-import { getCachedAudioKeys, getCachedMushafPageKeys, getCachedSurahNumbers } from "@/lib/db";
+import { downloadAyahAudio, downloadFullSurah, downloadMushafPage, fetchSurahText, getAyahAudioUrl, audioKey } from "@/lib/quran-api";
+import { getCachedAudioKeys, getCachedMushafPageKeys, getCachedSurahNumbers, getStorageEstimate, requestPersistentStorage } from "@/lib/db";
 
 export const Route = createFileRoute("/quran/")({
   component: QuranIndex,
@@ -14,6 +14,41 @@ export const Route = createFileRoute("/quran/")({
   }),
 });
 
+
+function formatBytes(bytes: number) {
+  if (!bytes) return "0 ب.ا";
+  const units = ["ب.ا", "ك.ب", "م.ب", "ج.ب"];
+  const unitIndex = Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), units.length - 1);
+  return `${(bytes / 1024 ** unitIndex).toFixed(unitIndex === 0 ? 0 : 1)} ${units[unitIndex]}`;
+}
+
+async function downloadReciterSurah(reciterId: ReciterId, surahNumber: number, signal: AbortSignal) {
+  try {
+    await downloadFullSurah(reciterId, surahNumber, undefined, signal);
+    return;
+  } catch (fullSurahError) {
+    if (signal.aborted || !navigator.onLine) throw fullSurahError;
+    const surah = surahs.find((item) => item.number === surahNumber);
+    if (!surah || !getAyahAudioUrl(reciterId, surahNumber, 1)) throw fullSurahError;
+    let nextAyah = 1;
+    const failures: number[] = [];
+    const worker = async () => {
+      while (!signal.aborted && nextAyah <= surah.numberOfAyahs) {
+        const ayah = nextAyah++;
+        try {
+          await downloadAyahAudio(reciterId, surahNumber, ayah, undefined, signal);
+        } catch (error) {
+          if (signal.aborted) return;
+          failures.push(ayah);
+          console.warn(`Ayah audio download failed for ${reciterId} / ${surahNumber} / ${ayah}`, error);
+        }
+      }
+    };
+    await Promise.all(Array.from({ length: 3 }, worker));
+    if (signal.aborted) throw new DOMException("تم إيقاف التنزيل", "AbortError");
+    if (failures.length) throw new Error(`تعذّر تنزيل ${failures.length} آية من سورة ${surah.name}.`);
+  }
+}
 
 function QuranIndex() {
   const [q, setQ] = useState("");
@@ -28,11 +63,15 @@ function QuranIndex() {
   const [offlineProgress, setOfflineProgress] = useState<{ done: number; total: number; current: string } | null>(null);
   const [allRecitersProgress, setAllRecitersProgress] = useState<{ done: number; total: number; current: string } | null>(null);
   const [downloadError, setDownloadError] = useState<string | null>(null);
+  const [allRecitersMessage, setAllRecitersMessage] = useState<string | null>(null);
+  const [bulkMessage, setBulkMessage] = useState<string | null>(null);
+  const [storageInfo, setStorageInfo] = useState<{ usage: number; quota: number; persistent: boolean | null }>({ usage: 0, quota: 0, persistent: null });
 
   useEffect(() => {
     getCachedAudioKeys().then(setCachedKeys);
     getCachedMushafPageKeys().then(setCachedPages);
     getCachedSurahNumbers().then(setCachedSurahs);
+    getStorageEstimate().then(setStorageInfo);
   }, []);
 
   const filtered = useMemo(() => {
@@ -47,54 +86,89 @@ function QuranIndex() {
   }, [q]);
 
   const downloadedCount = useMemo(() => {
-    return surahs.filter((s) => cachedKeys.has(audioKey(bulkReciter, s.number))).length;
+    return surahs.filter((surah) => {
+      if (cachedKeys.has(audioKey(bulkReciter, surah.number))) return true;
+      for (let ayah = 1; ayah <= surah.numberOfAyahs; ayah++) {
+        if (!cachedKeys.has(audioKey(bulkReciter, surah.number, ayah))) return false;
+      }
+      return true;
+    }).length;
   }, [cachedKeys, bulkReciter]);
 
   async function startBulkDownload() {
+    await requestPersistentStorage();
+    setBulkMessage(null);
     const controller = new AbortController();
     cancelRef.current = controller;
     setBulkProgress({ done: 0, total: surahs.length, current: surahs[0].name });
+    const failures: string[] = [];
+    let done = 0;
     try {
-      for (let i = 0; i < surahs.length; i++) {
+      for (const surah of surahs) {
         if (controller.signal.aborted) break;
-        const s = surahs[i];
-        setBulkProgress({ done: i, total: surahs.length, current: s.name });
+        setBulkProgress({ done, total: surahs.length, current: surah.name });
         try {
-          await downloadFullSurah(bulkReciter, s.number, undefined, controller.signal);
-        } catch (e) {
-          if (!controller.signal.aborted) console.error(`Failed surah ${s.number}`, e);
+          await downloadReciterSurah(bulkReciter, surah.number, controller.signal);
+        } catch (error) {
+          if (controller.signal.aborted) break;
+          failures.push(surah.name);
+          console.warn(`Audio download failed for ${bulkReciter} / ${surah.number}`, error);
         }
+        done++;
       }
     } finally {
       cancelRef.current = null;
       setBulkProgress(null);
       setCachedKeys(await getCachedAudioKeys());
+      setStorageInfo(await getStorageEstimate());
+      if (controller.signal.aborted) setBulkMessage(`توقف التنزيل عند ${done} من ${surahs.length}. الملفات المحفوظة باقية ويمكن استكمال الباقي بإعادة التنزيل.`);
+      else if (failures.length) setBulkMessage(`تعذّر تنزيل ${failures.length} سورة لهذا القارئ؛ أعد المحاولة لاستكمالها.`);
+      else setBulkMessage("اكتمل تنزيل سور هذا القارئ وأصبحت متاحة دون اتصال.");
     }
   }
 
   async function startAllRecitersDownload() {
-    if (!window.confirm("تنزيل تسجيلات القرآن كاملة للقراء السبعة قد يحتاج عدة غيغابايت من المساحة والبيانات. هل تريد المتابعة؟")) return;
+    const currentStorage = await getStorageEstimate();
+    const available = Math.max(0, currentStorage.quota - currentStorage.usage);
+    const availableLabel = currentStorage.quota ? `المتاح حاليًا على الجهاز نحو ${formatBytes(available)}. ` : "";
+    if (!window.confirm(`تنزيل تسجيلات القرآن كاملة للقراء السبعة قد يحتاج عدة غيغابايت من المساحة والبيانات. ${availableLabel}يمكن استكماله لاحقًا بإعادة المحاولة. هل تريد المتابعة؟`)) return;
+
+    await requestPersistentStorage();
+    setAllRecitersMessage(null);
     const controller = new AbortController();
     cancelRef.current = controller;
     const total = reciters.length * surahs.length;
     let done = 0;
+    const failures: string[] = [];
+    let stopped = false;
     try {
       for (const r of reciters) {
         for (const s of surahs) {
-          if (controller.signal.aborted) return;
+          if (controller.signal.aborted) { stopped = true; break; }
           setAllRecitersProgress({ done, total, current: `${r.name} — ${s.name}` });
           try {
-            await downloadFullSurah(r.id, s.number, undefined, controller.signal);
+            await downloadReciterSurah(r.id, s.number, controller.signal);
           } catch (e) {
-            if (!controller.signal.aborted) console.error(`Failed ${r.id} / ${s.number}`, e);
+            if (controller.signal.aborted) { stopped = true; break; }
+            failures.push(`${r.name} — ${s.name}`);
+            console.warn(`Audio download failed for ${r.id} / ${s.number}`, e);
           }
           done++;
         }
+        if (stopped) break;
       }
     } finally {
       cancelRef.current = null;
       setAllRecitersProgress(null);
       setCachedKeys(await getCachedAudioKeys());
+      setStorageInfo(await getStorageEstimate());
+      if (stopped || controller.signal.aborted) {
+        setAllRecitersMessage(`توقف التنزيل عند ${done} من ${total}. الملفات المكتملة محفوظة، ويمكن استكمال الباقي بإعادة التنزيل.`);
+      } else if (failures.length) {
+        setAllRecitersMessage(`اكتمل التنزيل جزئيًا: تعذّر تنزيل ${failures.length} سورة. أعد المحاولة لاستكمالها.`);
+      } else {
+        setAllRecitersMessage("اكتمل تنزيل أصوات القراء السبعة. أصبحت الملفات المحفوظة متاحة دون اتصال.");
+      }
     }
   }
 
@@ -105,35 +179,55 @@ function QuranIndex() {
   async function downloadOfflineQuran() {
     const controller = new AbortController();
     offlineCancelRef.current = controller;
-    const modes = ["clear", "tajweed"] as const;
-    const total = 604 * modes.length + surahs.length;
+    const jobs = [
+      ...(["clear", "tajweed"] as const).flatMap((mode) =>
+        Array.from({ length: 604 }, (_, index) => ({
+          label: `${mode === "clear" ? "النسخة الواضحة" : "ألوان التجويد"} — صفحة ${index + 1}`,
+          run: () => downloadMushafPage(index + 1, mode, undefined, controller.signal, true),
+        })),
+      ),
+      ...surahs.map((surah) => ({
+        label: `نص سورة ${surah.name}`,
+        run: () => fetchSurahText(surah.number, controller.signal),
+      })),
+    ];
+    let nextIndex = 0;
     let done = 0;
+    let failures = 0;
+    let consecutiveFailures = 0;
     setDownloadError(null);
-    try {
-      for (const mode of modes) {
-        for (let page = 1; page <= 604; page++) {
-          if (controller.signal.aborted) return;
-          setOfflineProgress({ done, total, current: `${mode === "clear" ? "النسخة الواضحة" : "ألوان التجويد"} — صفحة ${page}` });
-          await downloadMushafPage(page, mode, undefined, controller.signal);
+    await requestPersistentStorage();
+    setOfflineProgress({ done, total: jobs.length, current: "بدء تجهيز المحتوى دون إنترنت" });
+
+    const worker = async () => {
+      while (!controller.signal.aborted && nextIndex < jobs.length && consecutiveFailures < 8) {
+        const job = jobs[nextIndex++];
+        setOfflineProgress({ done, total: jobs.length, current: job.label });
+        try {
+          await job.run();
+          consecutiveFailures = 0;
+        } catch (error) {
+          if (controller.signal.aborted) break;
+          failures++;
+          consecutiveFailures++;
+          console.warn(`Offline content download failed: ${job.label}`, error);
+        } finally {
           done++;
+          setOfflineProgress({ done, total: jobs.length, current: job.label });
         }
       }
-      for (const surah of surahs) {
-        if (controller.signal.aborted) return;
-        setOfflineProgress({ done, total, current: `نص سورة ${surah.name}` });
-        await fetchSurahText(surah.number, controller.signal);
-        done++;
-      }
-    } catch (e) {
-      if (!controller.signal.aborted) {
-        console.error("Offline Quran download failed", e);
-        setDownloadError("تعذّر تنزيل بعض الصفحات أو النص. أعد المحاولة لإكمال ما لم يُحفظ.");
-      }
+    };
+
+    try {
+      await Promise.all(Array.from({ length: 3 }, () => worker()));
+      if (failures) setDownloadError(`تعذّر التحقق من ${failures} ملفًا. الملفات المكتملة محفوظة؛ أعد المحاولة لإكمال الناقص.`);
+      else if (!controller.signal.aborted) setDownloadError(null);
     } finally {
       offlineCancelRef.current = null;
       setOfflineProgress(null);
       setCachedPages(await getCachedMushafPageKeys());
       setCachedSurahs(await getCachedSurahNumbers());
+      setStorageInfo(await getStorageEstimate());
     }
   }
 
@@ -170,11 +264,9 @@ function QuranIndex() {
             <div>
               <p className="font-extrabold">المصحف دون إنترنت</p>
               <p className="text-[11px] text-muted-foreground">النسخة الواضحة والتجويد + نص السور • قد يصل إلى 590 م.ب</p>
-              <p className="mt-1 text-[10px] text-muted-foreground">
-                صفحات التجويد من دار المعرفة للاستخدام الإلكتروني غير التجاري •{" "}
-                <a href="https://github.com/jahedev/tajweed-quran-pages" target="_blank" rel="noreferrer" className="underline">مصدر الصفحات</a>
-              </p>
               <p className="mt-1 text-[10px] text-muted-foreground">المحفوظ: {cachedPages.size} / 1208 صفحة • {cachedSurahs.size} / 114 سورة</p>
+              <p className="mt-1 text-[10px] text-muted-foreground">التخزين المستخدم: {formatBytes(storageInfo.usage)}{storageInfo.quota ? ` • المتاح: ${formatBytes(Math.max(0, storageInfo.quota - storageInfo.usage))}` : ""}</p>
+              <p className="mt-1 text-[10px] text-muted-foreground">الحفظ الدائم: {storageInfo.persistent === true ? "مفعّل" : storageInfo.persistent === false ? "غير مفعّل" : "غير مدعوم"}</p>
             </div>
             <Download className="h-5 w-5 shrink-0" style={{ color: "var(--gold)" }} />
           </div>
@@ -338,6 +430,8 @@ function QuranIndex() {
                 </button>
               </div>
             )}
+            {bulkMessage && <p role="status" className="mt-3 rounded-xl border px-3 py-2 text-xs text-muted-foreground">{bulkMessage}</p>}
+            {allRecitersMessage && <p role="status" className="mt-3 rounded-xl border px-3 py-2 text-xs text-muted-foreground">{allRecitersMessage}</p>}
           </div>
         </div>
       )}

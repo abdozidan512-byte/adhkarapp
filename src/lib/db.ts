@@ -160,6 +160,34 @@ export async function saveMushafPage(page: number, mode: "tajweed" | "clear", bl
   await db.put("mushafPages", { key, page, mode, blob, size: blob.size, cachedAt: Date.now(), edition });
 }
 
+export async function deleteMushafPage(page: number, mode: "tajweed" | "clear") {
+  const db = await getDB();
+  if (!db) return;
+  await db.delete("mushafPages", mushafPageKey(page, mode));
+}
+
+export async function getStorageEstimate(): Promise<{ usage: number; quota: number; persistent: boolean | null }> {
+  if (typeof navigator === "undefined") return { usage: 0, quota: 0, persistent: null };
+  const storage = (navigator as Navigator & { storage?: { estimate?: () => Promise<{ usage?: number; quota?: number }>; persisted?: () => Promise<boolean> } }).storage;
+  if (!storage) return { usage: 0, quota: 0, persistent: null };
+  try {
+    const [estimate, persistent] = await Promise.all([
+      storage.estimate?.() ?? Promise.resolve({ usage: 0, quota: 0 }),
+      storage.persisted?.() ?? Promise.resolve(null),
+    ]);
+    return { usage: estimate.usage ?? 0, quota: estimate.quota ?? 0, persistent };
+  } catch {
+    return { usage: 0, quota: 0, persistent: null };
+  }
+}
+
+export async function requestPersistentStorage(): Promise<boolean | null> {
+  if (typeof navigator === "undefined") return null;
+  const storage = (navigator as Navigator & { storage?: { persist?: () => Promise<boolean> } }).storage;
+  if (!storage?.persist) return null;
+  try { return await storage.persist(); } catch { return false; }
+}
+
 export async function getCachedMushafPageKeys(): Promise<Set<string>> {
   const db = await getDB();
   if (!db) return new Set();

@@ -258,6 +258,78 @@ async function cropTajweedPage(blob: Blob): Promise<Blob> {
   }
 }
 
+const DISPLAY_PAGE_PRELOAD_COUNT = (() => {
+  const memory = typeof navigator === "undefined" ? undefined : (navigator as Navigator & { deviceMemory?: number }).deviceMemory;
+  if (memory === undefined) return 3;
+  return memory <= 2 ? 2 : memory <= 4 ? 3 : 5;
+})();
+const DISPLAY_PAGE_CACHE_LIMIT = DISPLAY_PAGE_PRELOAD_COUNT * 2 + 1;
+const displayPageUrls = new Map<string, string>();
+const displayPageLoads = new Map<string, Promise<string>>();
+
+function pageImageCacheKey(page: number, mode: "tajweed" | "clear") {
+  return `${mode}-${page}`;
+}
+
+function getCachedDisplayPage(page: number, mode: "tajweed" | "clear") {
+  const key = pageImageCacheKey(page, mode);
+  const url = displayPageUrls.get(key);
+  if (!url) return undefined;
+  displayPageUrls.delete(key);
+  displayPageUrls.set(key, url);
+  return url;
+}
+
+function peekCachedDisplayPage(page: number, mode: "tajweed" | "clear") {
+  return displayPageUrls.get(pageImageCacheKey(page, mode));
+}
+
+function forgetDisplayPage(page: number, mode: "tajweed" | "clear") {
+  const key = pageImageCacheKey(page, mode);
+  const url = displayPageUrls.get(key);
+  if (url) URL.revokeObjectURL(url);
+  displayPageUrls.delete(key);
+}
+
+async function getDisplayPage(page: number, mode: "tajweed" | "clear"): Promise<string> {
+  const key = pageImageCacheKey(page, mode);
+  const cached = getCachedDisplayPage(page, mode);
+  if (cached) return cached;
+  const pending = displayPageLoads.get(key);
+  if (pending) return pending;
+
+  const load = (async () => {
+    const rawBlob = await downloadMushafPage(page, mode);
+    const displayBlob = mode === "tajweed" ? await cropTajweedPage(rawBlob) : rawBlob;
+    const objectUrl = URL.createObjectURL(displayBlob);
+    try {
+      const image = new Image();
+      image.decoding = "async";
+      image.src = objectUrl;
+      await image.decode();
+      if (image.naturalWidth < 400 || image.naturalHeight < 600) throw new Error("أبعاد الصفحة غير صالحة.");
+    } catch (error) {
+      URL.revokeObjectURL(objectUrl);
+      throw error;
+    }
+
+    displayPageUrls.set(key, objectUrl);
+    while (displayPageUrls.size > DISPLAY_PAGE_CACHE_LIMIT) {
+      const [oldestKey, oldestUrl] = displayPageUrls.entries().next().value as [string, string];
+      displayPageUrls.delete(oldestKey);
+      URL.revokeObjectURL(oldestUrl);
+    }
+    return objectUrl;
+  })();
+
+  displayPageLoads.set(key, load);
+  try {
+    return await load;
+  } finally {
+    if (displayPageLoads.get(key) === load) displayPageLoads.delete(key);
+  }
+}
+
 function SurahReader() {
   const meta = Route.useLoaderData();
   const search = Route.useSearch();
@@ -273,9 +345,8 @@ function SurahReader() {
   const [tajweedMode, setTajweedMode] = useState(false);
   const [showLegend, setShowLegend] = useState(false);
   const [showReaderActions, setShowReaderActions] = useState(false);
-  const [pageImageLoaded, setPageImageLoaded] = useState(false);
   const [pageImageError, setPageImageError] = useState(false);
-  const [pageImageSrcs, setPageImageSrcs] = useState<Record<number, string>>({});
+  const [pageImageSrcs, setPageImageSrcs] = useState<Record<string, string>>({});
   const [imageRetry, setImageRetry] = useState(0);
   const [showAyahSelection, setShowAyahSelection] = useState(false);
   const [selectedAyahs, setSelectedAyahs] = useState<number[]>([]);
@@ -443,43 +514,49 @@ function SurahReader() {
     const current = pages[page];
     if (!current) return;
     let active = true;
-    const objectUrls: string[] = [];
     const mode = tajweedMode ? "tajweed" : "clear";
-    setPageImageLoaded(false);
+    const visibleIndexes = [page - 1, page, page + 1].filter((index) => index >= 0 && index < pages.length);
+    const visibleKeys = new Set(visibleIndexes.map((index) => pageImageCacheKey(pages[index].mushafPage, mode)));
     setPageImageError(false);
-    setPageImageSrcs({});
+    setPageImageSrcs((sources) => Object.fromEntries(
+      Object.entries(sources).filter(([key]) => visibleKeys.has(key)),
+    ));
 
-    const loadPage = async (mushafPage: number) => {
-      const rawBlob = await downloadMushafPage(mushafPage, mode);
-      const displayBlob = mode === "tajweed" ? await cropTajweedPage(rawBlob) : rawBlob;
-      const objectUrl = URL.createObjectURL(displayBlob);
-      if (!active) {
-        URL.revokeObjectURL(objectUrl);
-        return;
+    const loadDisplayPageNumber = async (mushafPage: number, publish = false) => {
+      const key = pageImageCacheKey(mushafPage, mode);
+      try {
+        const url = await getDisplayPage(mushafPage, mode);
+        if (!active || !publish || !visibleKeys.has(key)) return;
+        setPageImageSrcs((sources) => {
+          const next = Object.fromEntries(
+            Object.entries(sources).filter(([sourceKey]) => visibleKeys.has(sourceKey)),
+          );
+          return { ...next, [key]: url };
+        });
+      } catch {
+        if (active && mushafPage === current.mushafPage) setPageImageError(true);
       }
-      objectUrls.push(objectUrl);
-      setPageImageSrcs((currentSources) => ({ ...currentSources, [mushafPage]: objectUrl }));
+    };
+    const loadDisplayPage = async (pageIndex: number) => {
+      const mushafPage = pages[pageIndex]?.mushafPage;
+      if (typeof mushafPage === "number") await loadDisplayPageNumber(mushafPage, true);
     };
 
-    void loadPage(current.mushafPage)
-      .then(() => {
+    void (async () => {
+      await loadDisplayPage(page);
+      const adjacentIndexes = [page - 1, page + 1].filter((index) => index >= 0 && index < pages.length);
+      await Promise.all(adjacentIndexes.map(loadDisplayPage));
+      for (let distance = 1; distance <= DISPLAY_PAGE_PRELOAD_COUNT; distance++) {
         if (!active) return;
-        const adjacentPages = [
-          pages[page - 1]?.mushafPage,
-          pages[page + 1]?.mushafPage,
-        ].filter((value): value is number => typeof value === "number");
-        void Promise.all(adjacentPages.map((mushafPage) => loadPage(mushafPage).catch(() => undefined)));
-        const pageToWarm = pages[page + 2]?.mushafPage;
-        if (typeof pageToWarm === "number") void downloadMushafPage(pageToWarm, mode).catch(() => undefined);
-      })
-      .catch(() => {
-        if (active) setPageImageError(true);
-      });
+        const warmPageNumbers = [current.mushafPage - distance, current.mushafPage + distance]
+          .filter((mushafPage) => mushafPage >= 1 && mushafPage <= 604);
+        await Promise.all(warmPageNumbers.map((mushafPage) =>
+          loadDisplayPageNumber(mushafPage, visibleKeys.has(pageImageCacheKey(mushafPage, mode))),
+        ));
+      }
+    })();
 
-    return () => {
-      active = false;
-      objectUrls.forEach((objectUrl) => URL.revokeObjectURL(objectUrl));
-    };
+    return () => { active = false; };
   }, [pages, page, tajweedMode, imageRetry]);
 
   // Re-init the page carousel whenever the surah page list changes
@@ -951,7 +1028,7 @@ function SurahReader() {
       const pageFailures = await downloadConcurrently(
         pageTasks,
         3,
-        ({ pageNumber, mode }) => downloadMushafPage(pageNumber, mode),
+        ({ pageNumber, mode }) => downloadMushafPage(pageNumber, mode, undefined, undefined, true),
         (completed) => {
           pagesProgress = Math.round((completed / pageTasks.length) * 100);
           updateProgress();
@@ -1099,26 +1176,47 @@ function SurahReader() {
               style={{ flex: "0 0 100%", width: "100%" }}
             >
               <div className="relative flex h-full w-full items-center justify-center overflow-hidden p-0">
-                {idx === page && !pageImageLoaded && !pageImageError && (
+                {idx === page && !(pageImageSrcs[pageImageCacheKey(pg.mushafPage, tajweedMode ? "tajweed" : "clear")] || peekCachedDisplayPage(pg.mushafPage, tajweedMode ? "tajweed" : "clear")) && !pageImageError && (
                   <Loader2 className="absolute h-8 w-8 animate-spin text-muted-foreground" aria-label="جارٍ تحميل صفحة المصحف" />
                 )}
                 {idx === page && pageImageError ? (
                   <div className="mx-6 rounded-2xl border bg-card p-5 text-center text-sm shadow-lg">
                     <p className="font-bold">تعذّر تحميل صورة الصفحة</p>
                     <p className="mt-2 text-xs text-muted-foreground">هذه الصفحة تحتاج إلى تحديث. اتصل بالإنترنت لتنزيلها أو نزّل صفحات السورة من جديد.</p>
-                    <button onClick={() => setImageRetry((value) => value + 1)} className="mt-4 rounded-full px-4 py-2 text-xs font-bold text-primary-foreground" style={{ background: "var(--gradient-primary)" }}>إعادة المحاولة</button>
+                    <button onClick={() => {
+                      const mode = tajweedMode ? "tajweed" : "clear";
+                      const key = pageImageCacheKey(pg.mushafPage, mode);
+                      forgetDisplayPage(pg.mushafPage, mode);
+                      setPageImageSrcs((sources) => {
+                        const next = { ...sources };
+                        delete next[key];
+                        return next;
+                      });
+                      setImageRetry((value) => value + 1);
+                    }} className="mt-4 rounded-full px-4 py-2 text-xs font-bold text-primary-foreground" style={{ background: "var(--gradient-primary)" }}>إعادة المحاولة</button>
                   </div>
-                ) : Math.abs(idx - page) <= 1 && !!pageImageSrcs[pg.mushafPage] ? (
+                ) : Math.abs(idx - page) <= 1 && !!(pageImageSrcs[pageImageCacheKey(pg.mushafPage, tajweedMode ? "tajweed" : "clear")] || peekCachedDisplayPage(pg.mushafPage, tajweedMode ? "tajweed" : "clear")) ? (
                   <img
                     key={`${pg.mushafPage}-${tajweedMode}-${idx === page ? imageRetry : 0}`}
-                    src={pageImageSrcs[pg.mushafPage]}
+                    src={pageImageSrcs[pageImageCacheKey(pg.mushafPage, tajweedMode ? "tajweed" : "clear")] || peekCachedDisplayPage(pg.mushafPage, tajweedMode ? "tajweed" : "clear")}
                     alt={`صفحة المصحف ${pg.mushafPage} من سورة ${meta.name}`}
                     className={cn("h-full w-full select-none", "object-fill")}
                     draggable={false}
                     loading={idx === page ? "eager" : "lazy"}
                     decoding="async"
-                    onLoad={() => idx === page && setPageImageLoaded(true)}
-                    onError={() => idx === page && setPageImageError(true)}
+                    onError={() => {
+                      if (idx === page) {
+                        const mode = tajweedMode ? "tajweed" : "clear";
+                        const key = pageImageCacheKey(pg.mushafPage, mode);
+                        forgetDisplayPage(pg.mushafPage, mode);
+                        setPageImageSrcs((sources) => {
+                          const next = { ...sources };
+                          delete next[key];
+                          return next;
+                        });
+                        setPageImageError(true);
+                      }
+                    }}
                   />
                 ) : null}
               </div>
@@ -1263,6 +1361,11 @@ function SurahReader() {
             <p className="mt-3 text-[11px] leading-relaxed text-muted-foreground">
               الألوان مطابقة لمصحف المدينة المنورة برواية حفص عن عاصم. صور الصفحات من مشروع <a className="underline" href="https://github.com/QuranHub/quran-pages-images" target="_blank" rel="noreferrer">QuranHub/quran-pages-images</a>.
             </p>
+            {tajweedMode && (
+              <p className="mt-2 text-[11px] leading-relaxed text-muted-foreground">
+                صفحات التجويد من دار المعرفة للاستخدام الإلكتروني غير التجاري، عبر مشروع <a className="underline" href="https://github.com/jahedev/tajweed-quran-pages" target="_blank" rel="noreferrer">tajweed-quran-pages</a>.
+              </p>
+            )}
           </div>
         </div>
       )}

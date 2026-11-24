@@ -1,4 +1,4 @@
-import { getSurah, saveSurah, saveAudio, getAudio, getMushafPage, saveMushafPage } from "./db";
+import { getSurah, saveSurah, saveAudio, getAudio, deleteAudio, getMushafPage, saveMushafPage, deleteMushafPage } from "./db";
 import { reciters, type ReciterId } from "@/data/surahs";
 
 const mushafPageDownloads = new Map<string, Promise<Blob>>();
@@ -59,7 +59,9 @@ export async function fetchSurahText(surahNumber: number, signal?: AbortSignal):
   }
 
   const res = await fetch(`https://api.alquran.cloud/v1/surah/${surahNumber}/quran-uthmani`, { signal });
+  if (!res.ok) throw new Error(`تعذّر تحميل نص السورة: ${res.status}`);
   const json = await res.json();
+  if (!Array.isArray(json?.data?.ayahs)) throw new Error("استجابة نص القرآن غير مكتملة.");
   const ayahs: Ayah[] = json.data.ayahs.map((a: any, idx: number) => {
     let text: string = a.text;
     if (idx === 0 && shouldStrip) {
@@ -104,23 +106,66 @@ export function audioKey(reciterId: string, surahNumber: number, ayah?: number) 
   return ayah !== undefined ? `${reciterId}-${surahNumber}-${ayah}` : `${reciterId}-${surahNumber}`;
 }
 
+async function assertAudioBlob(blob: Blob, contentType = "") {
+  if (blob.size < 1024 || /text\/html|application\/json/i.test(contentType)) {
+    throw new Error("الملف المستلم ليس تسجيلًا صوتيًا صالحًا.");
+  }
+  const prefix = new TextDecoder().decode(await blob.slice(0, 80).arrayBuffer()).trimStart().toLowerCase();
+  if (prefix.startsWith("<!doctype html") || prefix.startsWith("<html") || prefix.startsWith("{\"error")) {
+    throw new Error("أعاد مصدر الصوت صفحة خطأ بدل التسجيل.");
+  }
+}
+
+async function assertMushafImageBlob(blob: Blob, verifyDecode = true) {
+  if (blob.size < 8_000) throw new Error("ملف صفحة المصحف ناقص أو تالف.");
+  const signature = new Uint8Array(await blob.slice(0, 3).arrayBuffer());
+  const endSignature = new Uint8Array(await blob.slice(-2).arrayBuffer());
+  if (signature[0] !== 0xff || signature[1] !== 0xd8 || signature[2] !== 0xff || endSignature[0] !== 0xff || endSignature[1] !== 0xd9) {
+    throw new Error("تنسيق صفحة المصحف غير مكتمل.");
+  }
+  if (!verifyDecode) return;
+  if (typeof createImageBitmap === "function") {
+    const bitmap = await createImageBitmap(blob);
+    const valid = bitmap.width >= 400 && bitmap.height >= 600;
+    bitmap.close();
+    if (!valid) throw new Error("أبعاد صفحة المصحف غير مكتملة.");
+    return;
+  }
+  const imageUrl = URL.createObjectURL(blob);
+  try {
+    const image = new Image();
+    image.src = imageUrl;
+    await image.decode();
+    if (image.naturalWidth < 400 || image.naturalHeight < 600) throw new Error("أبعاد صفحة المصحف غير مكتملة.");
+  } finally {
+    URL.revokeObjectURL(imageUrl);
+  }
+}
+
 export async function downloadAyahAudio(
   reciterId: ReciterId,
   surahNumber: number,
   ayah: number,
-  onProgress?: (pct: number) => void
+  onProgress?: (pct: number) => void,
+  signal?: AbortSignal,
 ): Promise<Blob> {
   const key = audioKey(reciterId, surahNumber, ayah);
   const cached = await getAudio(key);
   if (cached) {
-    onProgress?.(100);
-    return cached.blob;
+    try {
+      await assertAudioBlob(cached.blob);
+      onProgress?.(100);
+      return cached.blob;
+    } catch {
+      await deleteAudio(key);
+    }
   }
   const url = getAyahAudioUrl(reciterId, surahNumber, ayah);
   if (!url) throw new Error("هذا القارئ غير متاح آية بآية");
-  const res = await fetch(url);
+  const res = await fetch(url, { signal });
   if (!res.ok) throw new Error(`Failed to fetch audio: ${res.status}`);
   const blob = await res.blob();
+  await assertAudioBlob(blob, res.headers.get("content-type") ?? "");
   await saveAudio(key, blob, reciterId, surahNumber, ayah);
   onProgress?.(100);
   return blob;
@@ -136,17 +181,25 @@ export async function downloadFullSurah(
   const key = audioKey(reciterId, surahNumber);
   const cached = await getAudio(key);
   if (cached) {
-    onProgress?.(100);
-    return cached.blob;
+    try {
+      await assertAudioBlob(cached.blob);
+      onProgress?.(100);
+      return cached.blob;
+    } catch {
+      await deleteAudio(key);
+    }
   }
   const url = getFullSurahAudioUrl(reciterId, surahNumber);
   if (!url) throw new Error("لا يوجد رابط لهذه السورة");
   const res = await fetch(url, { signal });
   if (!res.ok) throw new Error(`Failed: ${res.status}`);
+  const contentType = res.headers.get("content-type") ?? "";
+  if (/text\/html|application\/json/i.test(contentType)) throw new Error("أعاد مصدر الصوت صفحة خطأ بدل التسجيل.");
   const reader = res.body?.getReader();
   const total = Number(res.headers.get("content-length") || 0);
   if (!reader) {
     const blob = await res.blob();
+    await assertAudioBlob(blob, contentType);
     await saveAudio(key, blob, reciterId, surahNumber);
     onProgress?.(100);
     return blob;
@@ -161,6 +214,7 @@ export async function downloadFullSurah(
     if (total > 0) onProgress?.(Math.round((received / total) * 100));
   }
   const blob = new Blob(chunks as BlobPart[], { type: "audio/mpeg" });
+  await assertAudioBlob(blob, contentType);
   await saveAudio(key, blob, reciterId, surahNumber);
   onProgress?.(100);
   return blob;
@@ -199,6 +253,7 @@ export async function downloadMushafPage(
   mode: MushafPageMode = "tajweed",
   onProgress?: (pct: number) => void,
   signal?: AbortSignal,
+  verifyCached = false,
 ): Promise<Blob> {
   const key = `${mode}-${page}`;
   let request = mushafPageDownloads.get(key);
@@ -206,11 +261,19 @@ export async function downloadMushafPage(
     request = (async () => {
       const cached = await getMushafPage(page, mode);
       const edition = mode === "tajweed" ? TAJWEED_MUSHAF_EDITION : CLEAR_MUSHAF_EDITION;
-      if (cached?.blob && (mode === "clear" || cached.edition === edition)) return cached.blob;
+      if (cached?.blob && (mode === "clear" || cached.edition === edition)) {
+        try {
+          await assertMushafImageBlob(cached.blob, verifyCached);
+          return cached.blob;
+        } catch {
+          await deleteMushafPage(page, mode);
+        }
+      }
       try {
         const response = await fetch(getMushafPageImageUrl(page, mode), { signal });
         if (!response.ok) throw new Error(`تعذّر تنزيل صفحة المصحف ${page}: ${response.status}`);
         const blob = await response.blob();
+        await assertMushafImageBlob(blob);
         await saveMushafPage(page, mode, blob, edition);
         return blob;
       } catch (error) {

@@ -1,10 +1,11 @@
 // Service Worker لتطبيق نور — يفعّل العمل دون إنترنت ويرفع تقييم PWA
 // IMPORTANT: ارفع رقم الإصدار عند كل تغيير لإبطال الكاش القديم
-const CACHE_VERSION = "noor-v5";
+const CACHE_VERSION = "noor-v6";
 const STATIC_CACHE = `${CACHE_VERSION}-static`;
 const RUNTIME_CACHE = `${CACHE_VERSION}-runtime`;
 
 const PRECACHE_URLS = [
+  "/",
   "/manifest.webmanifest",
   "/icon-192.png",
   "/icon-512.png",
@@ -55,7 +56,7 @@ self.addEventListener("fetch", (event) => {
           // لا نخزّن HTML في الكاش لأن أسماء chunks تتغيّر مع كل بناء
           return res;
         })
-        .catch(() => caches.match(req).then((r) => r || new Response(
+        .catch(() => caches.match("/").then((shell) => shell || caches.match(req)).then((r) => r || new Response(
           "<!doctype html><meta charset=utf-8><title>غير متصل</title><body style='font-family:system-ui;text-align:center;padding:40px'>تعذّر الاتصال بالإنترنت — حاول لاحقاً.</body>",
           { headers: { "Content-Type": "text/html; charset=utf-8" } }
         )))
