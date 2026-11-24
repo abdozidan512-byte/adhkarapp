@@ -1113,7 +1113,7 @@ function SurahReader() {
                     key={`${pg.mushafPage}-${tajweedMode}-${idx === page ? imageRetry : 0}`}
                     src={pageImageSrcs[pg.mushafPage]}
                     alt={`صفحة المصحف ${pg.mushafPage} من سورة ${meta.name}`}
-                    className={cn("h-full w-full select-none", tajweedMode ? "object-contain" : "object-fill")}
+                    className={cn("h-full w-full select-none", "object-fill")}
                     draggable={false}
                     loading={idx === page ? "eager" : "lazy"}
                     decoding="async"
