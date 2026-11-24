@@ -8,6 +8,7 @@ import { surahs, reciters, type ReciterId } from "@/data/surahs";
 import { tajweedLegend } from "@/lib/tajweed";
 import { fetchSurahTafsir, tafsirEditions, type TafsirAyah } from "@/lib/tafsir";
 import {
+  fetchAllQuranText,
   fetchSurahText,
   getAyahAudioUrl,
   downloadAyahAudio,
@@ -45,7 +46,7 @@ export const Route = createFileRoute("/quran/$num")({
   }),
 });
 
-type QuranAyah = { numberInSurah: number; text: string; page?: number; juz?: number };
+type QuranAyah = { numberInSurah: number; text: string; page?: number; juz?: number; surahNumber?: number };
 type QuranPage = { ayahs: QuranAyah[]; mushafPage: number };
 
 let nativePlaylistReady: Promise<void> | null = null;
@@ -365,6 +366,8 @@ function SurahReader() {
   const audioFallbackRef = useRef<WeakSet<HTMLAudioElement>>(new WeakSet());
   const cachedAudioKeysRef = useRef<Set<string>>(new Set());
   const playQueueRef = useRef<number[]>([]);
+  const playbackSurahNumberRef = useRef(meta.number);
+  const playbackAyahsRef = useRef<QuranAyah[]>([]);
   const selectedAyahsRef = useRef<number[]>([]);
   const repeatSelectedRef = useRef(false);
   const longPressTimerRef = useRef<number | null>(null);
@@ -416,19 +419,72 @@ function SurahReader() {
 
   const [emblaRef, emblaApi] = useEmblaCarousel({ direction: "rtl", align: "center", loop: false });
   const [page, setPage] = useState(0);
+  const initialPageAppliedRef = useRef(false);
+
+  // One canonical carousel spans every page, so page turns cross surah boundaries.
+  const pages = useMemo<QuranPage[]>(() => {
+    const grouped: QuranPage[] = Array.from({ length: 604 }, (_, index) => ({
+      mushafPage: index + 1,
+      ayahs: [],
+    }));
+    for (const ayah of ayahs ?? []) {
+      const pageNumber = ayah.page;
+      if (!Number.isInteger(pageNumber) || (pageNumber ?? 0) < 1 || (pageNumber ?? 0) > 604) continue;
+      grouped[(pageNumber as number) - 1].ayahs.push(ayah);
+    }
+    return grouped;
+  }, [ayahs]);
+
+  const currentPageAyahs = pages[page]?.ayahs ?? [];
+  const activeSurahNumber = currentPageAyahs[0]?.surahNumber ?? meta.number;
+  const activeSurahMeta = surahs.find((item) => item.number === activeSurahNumber) ?? meta;
+  const activeSurahAyahs = useMemo(
+    () => (ayahs ?? []).filter((ayah) => ayah.surahNumber === activeSurahNumber),
+    [ayahs, activeSurahNumber],
+  );
 
   useEffect(() => {
     let alive = true;
+    let currentFailed = false;
+    let indexFailed = false;
+    let indexReady = false;
+    initialPageAppliedRef.current = false;
     setError(null);
+    const showErrorIfBothFailed = () => {
+      if (alive && currentFailed && indexFailed) {
+        setError("تعذّر تحميل نص القرآن، تحقق من الاتصال أو من المحتوى المحفوظ.");
+      }
+    };
+
+    // Show this surah as soon as its local/cache request completes. The full
+    // Quran index fills the remaining page metadata in the background.
     fetchSurahText(meta.number)
-      .then((a) => alive && setAyahs(a))
-      .catch(() => setError("تعذّر تحميل السورة، تحقق من الإنترنت أول مرة."));
+      .then((current) => {
+        if (alive && !indexReady) {
+          setAyahs(current.map((ayah) => ({ ...ayah, surahNumber: meta.number })));
+        }
+      })
+      .catch(() => {
+        currentFailed = true;
+        showErrorIfBothFailed();
+      });
+
+    fetchAllQuranText()
+      .then((all) => {
+        indexReady = true;
+        if (alive) setAyahs(all as QuranAyah[]);
+      })
+      .catch(() => {
+        indexFailed = true;
+        showErrorIfBothFailed();
+      });
+
     return () => {
       alive = false;
     };
   }, [meta.number]);
 
-  // Clear page-scoped selections when opening another surah.
+  // Clear page-scoped tools when the reader moves to a different page.
   useEffect(() => {
     setSelectedAyahs([]);
     setRepeatSelectedAyahs(false);
@@ -438,22 +494,19 @@ function SurahReader() {
     setTafsirData(null);
     setAudioError(null);
     playQueueRef.current = [];
-  }, [meta.number]);
+  }, [page, meta.number]);
 
-  // Load tafsir when sheet opens or edition changes
+  // Load tafsir for the surah shown on the current page.
   useEffect(() => {
-    if (tafsirAyah === null) return;
-    if (tafsirData) return;
+    if (tafsirAyah === null || tafsirData) return;
     let alive = true;
     setTafsirLoading(true);
-    fetchSurahTafsir(meta.number, tafsirEdition)
-      .then((d) => alive && setTafsirData(d))
-      .catch((e) => console.error("tafsir", e))
+    fetchSurahTafsir(activeSurahMeta.number, tafsirEdition)
+      .then((data) => alive && setTafsirData(data))
+      .catch((error) => console.error("tafsir", error))
       .finally(() => alive && setTafsirLoading(false));
-    return () => {
-      alive = false;
-    };
-  }, [tafsirAyah, tafsirEdition, tafsirData, meta.number]);
+    return () => { alive = false; };
+  }, [tafsirAyah, tafsirEdition, tafsirData, activeSurahMeta.number]);
 
   // Reset tafsir cache when edition changes
   useEffect(() => {
@@ -479,7 +532,7 @@ function SurahReader() {
     return () => {
       active = false;
     };
-  }, [reciter, meta.number]);
+  }, [reciter]);
 
   // Stop audio and release local media URLs when leaving the reader.
   useEffect(() => {
@@ -489,26 +542,6 @@ function SurahReader() {
       if (audioObjectUrlRef.current) URL.revokeObjectURL(audioObjectUrlRef.current);
     };
   }, []);
-
-  // Build pages from standard Madani Mushaf page numbers returned with each ayah.
-  // Stable page boundaries prevent short, arbitrary pages caused by viewport measurements.
-  const pages = useMemo<QuranPage[]>(() => {
-    if (!ayahs) return [];
-    const grouped: QuranPage[] = [];
-
-    for (const ayah of ayahs) {
-      const fallbackPage = Math.floor((ayah.numberInSurah - 1) / 8) + 1;
-      const mushafPage = ayah.page ?? fallbackPage;
-      const current = grouped[grouped.length - 1];
-      if (current?.mushafPage === mushafPage) {
-        current.ayahs.push(ayah);
-      } else {
-        grouped.push({ mushafPage, ayahs: [ayah] });
-      }
-    }
-
-    return grouped;
-  }, [ayahs]);
 
   useEffect(() => {
     const current = pages[page];
@@ -565,33 +598,41 @@ function SurahReader() {
     emblaApi.reInit();
   }, [emblaApi, pages.length]);
 
-  // Jump to ?page= once carousel & ayahs are ready
+  // Opening from the surah index starts at its canonical first page.
+  // Continue Reading may pass a zero-based page from the full Mushaf.
   useEffect(() => {
-    if (!emblaApi || !ayahs || search.page === undefined) return;
-    const target = Math.max(0, Math.min(pages.length - 1, search.page));
-    emblaApi.scrollTo(target, true);
-  }, [emblaApi, ayahs, search.page, pages.length]);
+    if (!emblaApi || pages.length !== 604 || initialPageAppliedRef.current) return;
+    const firstAyah = ayahs?.find((ayah) => ayah.surahNumber === meta.number && ayah.numberInSurah === 1)
+      ?? ayahs?.find((ayah) => ayah.surahNumber === meta.number);
+    if (search.page === undefined && !firstAyah) return;
+    const surahStart = Math.max(0, (firstAyah?.page ?? 1) - 1);
+    const requestedPage = search.page === undefined || !Number.isFinite(search.page) ? surahStart : Math.trunc(search.page);
+    emblaApi.scrollTo(Math.max(0, Math.min(603, requestedPage)), true);
+    initialPageAppliedRef.current = true;
+  }, [emblaApi, ayahs, search.page, pages.length, meta.number]);
 
-  // Persist reading progress whenever the page changes
+  // Save a global page index and the surah currently shown on that page.
   useEffect(() => {
-    if (!ayahs || pages.length === 0) return;
-    const currentPage = pages[page]?.ayahs;
-    if (!currentPage || currentPage.length === 0) return;
+    if (!ayahs || pages.length !== 604) return;
+    const currentPage = pages[page]?.ayahs ?? [];
+    const firstAyah = currentPage[0];
+    const pageSurah = surahs.find((item) => item.number === firstAyah?.surahNumber) ?? meta;
     saveReadingProgress({
-      surahNumber: meta.number,
-      surahName: meta.name,
+      surahNumber: pageSurah.number,
+      surahName: pageSurah.name,
       page,
-      totalPages: pages.length,
-      ayah: currentPage[0].numberInSurah,
+      totalPages: 604,
+      globalPage: true,
+      ayah: firstAyah?.numberInSurah ?? 1,
       updatedAt: Date.now(),
     });
-    // Daily mission + achievement: a page was read
     recordQuranPageRead();
-    // Reaching the last page = surah completed
-    if (page === pages.length - 1) {
+    const lastAyah = currentPage[currentPage.length - 1];
+    const nextPageFirstAyah = pages[page + 1]?.ayahs[0];
+    if (lastAyah?.surahNumber && lastAyah.surahNumber !== nextPageFirstAyah?.surahNumber) {
       recordSurahCompleted();
     }
-  }, [page, ayahs, pages.length, meta.number, meta.name]);
+  }, [page, ayahs, pages, meta.number, meta.name]);
 
   function clearAudioObjectUrl() {
     if (audioObjectUrlRef.current) {
@@ -609,18 +650,19 @@ function SurahReader() {
   async function fallBackToCachedAudio(audio: HTMLAudioElement, ayah?: number) {
     if (audioRef.current !== audio || audio.src.startsWith("blob:") || audioFallbackRef.current.has(audio)) return;
     audioFallbackRef.current.add(audio);
+    const surahNumber = playbackSurahNumberRef.current;
     let blob = ayah === undefined
-      ? await getFullSurahBlob(reciter, meta.number)
-      : await getAyahAudioBlob(reciter, meta.number, ayah);
+      ? await getFullSurahBlob(reciter, surahNumber)
+      : await getAyahAudioBlob(reciter, surahNumber, ayah);
 
     // Some Android WebViews fail to stream remote MP3s directly. Download the
     // requested track once and retry from a local Blob URL.
     if (!blob && navigator.onLine) {
       try {
         blob = ayah === undefined
-          ? await downloadFullSurah(reciter, meta.number)
-          : await downloadAyahAudio(reciter, meta.number, ayah);
-        cachedAudioKeysRef.current.add(audioKey(reciter, meta.number, ayah));
+          ? await downloadFullSurah(reciter, surahNumber)
+          : await downloadAyahAudio(reciter, surahNumber, ayah);
+        cachedAudioKeysRef.current.add(audioKey(reciter, surahNumber, ayah));
       } catch (downloadError) {
         console.error("Audio fallback download failed", downloadError);
       }
@@ -628,11 +670,11 @@ function SurahReader() {
 
     if (audioRef.current !== audio) return;
     if (!blob) {
-      // If the combined surah stream is unavailable, fall back to the
-      // reciter's ayah files when they are available.
-      const firstAyah = ayahs?.[0]?.numberInSurah;
-      if (ayah === undefined && firstAyah !== undefined && getAyahAudioUrl(reciter, meta.number, firstAyah)) {
-        playQueueRef.current = ayahs!.slice(1).map((item) => item.numberInSurah);
+      // If the combined surah stream is unavailable, fall back to that
+      // playback's ayah sequence, even if the reader has since flipped pages.
+      const firstAyah = playbackAyahsRef.current[0]?.numberInSurah;
+      if (ayah === undefined && firstAyah !== undefined && getAyahAudioUrl(reciter, surahNumber, firstAyah)) {
+        playQueueRef.current = playbackAyahsRef.current.slice(1).map((item) => item.numberInSurah);
         playAyah(firstAyah);
         return;
       }
@@ -657,12 +699,14 @@ function SurahReader() {
   }
 
   function nativeAyahTrack(ayah: number) {
-    const src = getAyahAudioUrl(reciter, meta.number, ayah);
+    const surahNumber = playbackSurahNumberRef.current;
+    const surahName = surahs.find((item) => item.number === surahNumber)?.name ?? activeSurahMeta.name;
+    const src = getAyahAudioUrl(reciter, surahNumber, ayah);
     if (!src) return null;
     return {
-      trackId: `ayah-${meta.number}-${ayah}`,
+      trackId: `ayah-${surahNumber}-${ayah}`,
       assetUrl: src,
-      title: `سورة ${meta.name} — الآية ${ayah}`,
+      title: `سورة ${surahName} — الآية ${ayah}`,
       artist: reciters.find((item) => item.id === reciter)?.name ?? "قارئ القرآن",
       album: "القرآن الكريم",
       isStream: false,
@@ -784,7 +828,7 @@ function SurahReader() {
       }
     }
 
-    const src = getAyahAudioUrl(reciter, meta.number, ayah);
+    const src = getAyahAudioUrl(reciter, playbackSurahNumberRef.current, ayah);
     if (!src) {
       setAudioError("لا تتوفر تلاوة آية بآية لهذا القارئ؛ شغّل السورة كاملة.");
       playQueueRef.current = [];
@@ -833,13 +877,21 @@ function SurahReader() {
   }
 
   function playFullSurahFile() {
-    const src = getFullSurahAudioUrl(reciter, meta.number);
+    const pageHasSurahText = currentPageAyahs.some((ayah) => ayah.surahNumber === activeSurahNumber);
+    if (!pageHasSurahText) {
+      setAudioError("بيانات تلاوة هذه الصفحة غير متاحة بعد. أعد المحاولة عند توفر بيانات المصحف.");
+      return;
+    }
+    const surahNumber = activeSurahMeta.number;
+    playbackSurahNumberRef.current = surahNumber;
+    playbackAyahsRef.current = activeSurahAyahs;
+    const src = getFullSurahAudioUrl(reciter, surahNumber);
     if (Capacitor.isNativePlatform() && navigator.onLine) {
       if (src) {
         const track = {
-          trackId: `surah-${meta.number}`,
+          trackId: `surah-${surahNumber}`,
           assetUrl: src,
-          title: `سورة ${meta.name}`,
+          title: `سورة ${activeSurahMeta.name}`,
           artist: reciters.find((item) => item.id === reciter)?.name ?? "قارئ القرآن",
           album: "القرآن الكريم",
           isStream: false,
@@ -847,12 +899,12 @@ function SurahReader() {
         void playNativeTracks([track], repeatPlayback, -1);
         return;
       }
-      const tracks = (ayahs ?? []).map((ayah) => nativeAyahTrack(ayah.numberInSurah));
+      const tracks = playbackAyahsRef.current.map((ayah) => nativeAyahTrack(ayah.numberInSurah));
       if (tracks.length && tracks.every((track) => track !== null)) {
         void playNativeTracks(
           tracks as NonNullable<ReturnType<typeof nativeAyahTrack>>[],
           repeatPlayback,
-          tracks[0] ? ayahs?.[0]?.numberInSurah ?? -1 : -1,
+          tracks[0] ? playbackAyahsRef.current[0]?.numberInSurah ?? -1 : -1,
         );
         return;
       }
@@ -909,8 +961,11 @@ function SurahReader() {
 
   function playCurrentPage() {
     const selectedReciter = reciters.find((item) => item.id === reciter);
-    const list = (pages[page]?.ayahs ?? []).map((a) => a.numberInSurah);
-    if (selectedReciter?.mode !== "surah" && list.length && getAyahAudioUrl(reciter, meta.number, list[0])) {
+    const pageAyahs = currentPageAyahs.filter((ayah) => ayah.surahNumber === activeSurahNumber);
+    playbackSurahNumberRef.current = activeSurahNumber;
+    playbackAyahsRef.current = pageAyahs;
+    const list = pageAyahs.map((ayah) => ayah.numberInSurah);
+    if (selectedReciter?.mode !== "surah" && list.length && getAyahAudioUrl(reciter, activeSurahNumber, list[0])) {
       const first = list.shift()!;
       playQueueRef.current = list;
       playAyah(first);
@@ -953,7 +1008,11 @@ function SurahReader() {
 
   function playSelectedAyahs() {
     if (!selectedAyahs.length) return;
-    if (!getAyahAudioUrl(reciter, meta.number, selectedAyahs[0])) {
+    playbackSurahNumberRef.current = activeSurahNumber;
+    playbackAyahsRef.current = currentPageAyahs.filter((ayah) =>
+      ayah.surahNumber === activeSurahNumber && selectedAyahs.includes(ayah.numberInSurah),
+    );
+    if (!getAyahAudioUrl(reciter, activeSurahNumber, selectedAyahs[0])) {
       setAudioError("التلاوة المحددة غير متاحة آية بآية لهذا القارئ. اختر قارئًا آخر لتكرار الآيات المحددة.");
       return;
     }
@@ -969,11 +1028,21 @@ function SurahReader() {
   }
 
   async function downloadAll() {
-    if (!ayahs || !pages.length || downloading !== null) return;
+    if (!ayahs || pages.length !== 604 || downloading !== null) return;
+    if (!currentPageAyahs.some((ayah) => ayah.surahNumber === activeSurahNumber)) {
+      setDownloadMessage({ kind: "error", text: "بيانات السورة في هذه الصفحة غير متاحة بعد." });
+      return;
+    }
     setDownloadMessage(null);
     setDownloading({ ayah: "all", pct: 0 });
 
-    const pageNumbers = [...new Set(pages.map((item) => item.mushafPage))];
+    const surahAyahs = activeSurahAyahs;
+    const pageNumbers = [...new Set(
+      surahAyahs
+        .map((ayah) => ayah.page)
+        .filter((pageNumber): pageNumber is number => Number.isInteger(pageNumber) && (pageNumber ?? 0) >= 1 && (pageNumber ?? 0) <= 604),
+    )];
+    if (currentMushafPage && !pageNumbers.includes(currentMushafPage)) pageNumbers.push(currentMushafPage);
     const pageTasks = (["tajweed", "clear"] as const).flatMap((mode) =>
       pageNumbers.map((pageNumber) => ({ pageNumber, mode }))
     );
@@ -988,14 +1057,15 @@ function SurahReader() {
     };
 
     const downloadAudio = async () => {
-      const fullSurahUrl = getFullSurahAudioUrl(reciter, meta.number);
+      const surahNumber = activeSurahMeta.number;
+      const fullSurahUrl = getFullSurahAudioUrl(reciter, surahNumber);
       if (fullSurahUrl) {
         try {
-          await downloadFullSurah(reciter, meta.number, (pct) => {
+          await downloadFullSurah(reciter, surahNumber, (pct) => {
             audioProgress = pct;
             updateProgress();
           });
-          cachedAudioKeysRef.current.add(audioKey(reciter, meta.number));
+          cachedAudioKeysRef.current.add(audioKey(reciter, surahNumber));
           audioProgress = 100;
           updateProgress();
           return;
@@ -1004,16 +1074,16 @@ function SurahReader() {
         }
       }
 
-      const firstAyah = ayahs[0]?.numberInSurah;
-      if (firstAyah === undefined || !getAyahAudioUrl(reciter, meta.number, firstAyah)) {
-        throw new Error("لا تتوفر ملفات صوتية لهذا القارئ والسورة.");
+      const firstAyah = surahAyahs[0]?.numberInSurah;
+      if (firstAyah === undefined || !getAyahAudioUrl(reciter, surahNumber, firstAyah)) {
+        throw new Error("لا تتوفر ملفات صوتية لهذه السورة والقارئ.");
       }
       const ayahFailures = await downloadConcurrently(
-        ayahs,
+        surahAyahs,
         3,
-        (ayah) => downloadAyahAudio(reciter, meta.number, ayah.numberInSurah),
+        (ayah) => downloadAyahAudio(reciter, surahNumber, ayah.numberInSurah),
         (completed) => {
-          audioProgress = Math.round((completed / ayahs.length) * 100);
+          audioProgress = Math.round((completed / surahAyahs.length) * 100);
           updateProgress();
         },
       );
@@ -1048,7 +1118,7 @@ function SurahReader() {
       if (audioSaved && pagesSaved) {
         setDownloadMessage({
           kind: "success",
-          text: `تم حفظ تلاوة ${reciters.find((item) => item.id === reciter)?.name ?? "القارئ"} وصفحات سورة ${meta.name} بنوعي العرض دون إنترنت.`,
+          text: `تم حفظ تلاوة ${reciters.find((item) => item.id === reciter)?.name ?? "القارئ"} وصفحات سورة ${activeSurahMeta.name} بنوعي العرض دون إنترنت.`,
         });
       } else {
         const missing = [
@@ -1199,7 +1269,7 @@ function SurahReader() {
                   <img
                     key={`${pg.mushafPage}-${tajweedMode}-${idx === page ? imageRetry : 0}`}
                     src={pageImageSrcs[pageImageCacheKey(pg.mushafPage, tajweedMode ? "tajweed" : "clear")] || peekCachedDisplayPage(pg.mushafPage, tajweedMode ? "tajweed" : "clear")}
-                    alt={`صفحة المصحف ${pg.mushafPage} من سورة ${meta.name}`}
+                    alt={`صفحة المصحف ${pg.mushafPage}`}
                     className={cn("h-full w-full select-none", "object-fill")}
                     draggable={false}
                     loading={idx === page ? "eager" : "lazy"}
@@ -1233,7 +1303,7 @@ function SurahReader() {
             <button onClick={() => { playFullSurah(); setShowReaderActions(false); }} className="flex items-center gap-2 rounded-xl px-3 py-2 text-right text-sm font-bold"><BookOpen className="h-4 w-4" /> تلاوة السورة</button>
             <button onClick={() => { setShowReciterSheet(true); setShowReaderActions(false); }} className="flex items-center gap-2 rounded-xl px-3 py-2 text-right text-sm font-bold"><Volume2 className="h-4 w-4" /> اختيار القارئ</button>
             <button onClick={() => { setShowLegend(true); setShowReaderActions(false); }} className="flex items-center gap-2 rounded-xl px-3 py-2 text-right text-sm font-bold"><Palette className="h-4 w-4" /> مفتاح ألوان التجويد</button>
-            <button onClick={() => { setTafsirSelection(false); setTafsirAyah(pages[page]?.ayahs[0]?.numberInSurah ?? null); setShowReaderActions(false); }} className="flex items-center gap-2 rounded-xl px-3 py-2 text-right text-sm font-bold"><BookOpen className="h-4 w-4" /> تفسير أول آية بالصفحة</button>
+            <button onClick={() => { setTafsirSelection(false); setTafsirAyah(currentPageAyahs.find((ayah) => ayah.surahNumber === activeSurahNumber)?.numberInSurah ?? null); setShowReaderActions(false); }} className="flex items-center gap-2 rounded-xl px-3 py-2 text-right text-sm font-bold"><BookOpen className="h-4 w-4" /> تفسير أول آية بالصفحة</button>
             <button onClick={() => { setShowAyahSelection(true); setShowReaderActions(false); }} className="flex items-center gap-2 rounded-xl px-3 py-2 text-right text-sm font-bold"><ListChecks className="h-4 w-4" /> تحديد عدة آيات</button>
             <button onClick={() => { void downloadAll(); setShowReaderActions(false); }} disabled={downloading !== null} className="flex items-center gap-2 rounded-xl px-3 py-2 text-right text-sm font-bold disabled:opacity-50"><Download className="h-4 w-4" /> تحميل السورة</button>
           </div>
@@ -1264,7 +1334,7 @@ function SurahReader() {
               <button onClick={() => setShowAyahSelection(false)} className="flex h-9 w-9 items-center justify-center rounded-full border"><X className="h-4 w-4" /></button>
             </div>
             <div className="space-y-2">
-              {(pages[page]?.ayahs ?? []).map((ayah) => {
+              {currentPageAyahs.filter((ayah) => ayah.surahNumber === activeSurahNumber).map((ayah) => {
                 const selected = selectedAyahs.includes(ayah.numberInSurah);
                 return (
                   <button
@@ -1386,7 +1456,7 @@ function SurahReader() {
                 <BookOpen className="h-5 w-5" />
                 <div>
                   <p className="text-base font-extrabold">{tafsirSelection ? `تفسير ${selectedAyahs.length} آية محددة` : `تفسير الآية ${tafsirAyah}`}</p>
-                  <p className="text-[10px] opacity-80">سورة {meta.name}</p>
+                  <p className="text-[10px] opacity-80">سورة {activeSurahMeta.name}</p>
                 </div>
               </div>
               <button
@@ -1433,7 +1503,7 @@ function SurahReader() {
                   {selectedAyahs.map((number) => (
                     <div key={number} className="rounded-2xl border p-4">
                       <div className="mb-3 rounded-xl p-3 text-center font-quran text-lg leading-loose" style={{ background: "color-mix(in oklab, var(--gold) 8%, transparent)" }}>
-                        {ayahs?.find((a) => a.numberInSurah === number)?.text}
+                        {ayahs?.find((a) => a.surahNumber === activeSurahNumber && a.numberInSurah === number)?.text}
                         <span className="mx-2 inline-flex h-7 w-7 items-center justify-center rounded-full text-[11px] font-bold" style={{ background: "var(--gradient-gold)", color: "var(--gold-foreground)" }}>{number}</span>
                       </div>
                       <p className="text-base leading-loose" style={{ lineHeight: 2 }}>{tafsirData?.find((t) => t.numberInSurah === number)?.text || "التفسير غير متاح حالياً."}</p>
@@ -1444,7 +1514,7 @@ function SurahReader() {
                 <div className="space-y-3">
                   {ayahs && (
                     <div className="rounded-2xl border p-4 text-center font-quran leading-loose" style={{ background: "color-mix(in oklab, var(--gold) 8%, transparent)", fontSize: 22, lineHeight: 2.2 }}>
-                      {ayahs.find((a) => a.numberInSurah === tafsirAyah)?.text}
+                      {ayahs.find((a) => a.surahNumber === activeSurahNumber && a.numberInSurah === tafsirAyah)?.text}
                       <span className="mx-2 inline-flex h-7 w-7 items-center justify-center rounded-full text-[11px] font-bold" style={{ background: "var(--gradient-gold)", color: "var(--gold-foreground)" }}>{tafsirAyah}</span>
                     </div>
                   )}

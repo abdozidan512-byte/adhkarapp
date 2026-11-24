@@ -130,6 +130,8 @@ export type ReadingProgress = {
   surahName: string;
   page: number;
   totalPages: number;
+  /** Marks page as a zero-based page in the full Mushaf, not a surah-local offset. */
+  globalPage?: boolean;
   ayah: number;
   updatedAt: number;
 };

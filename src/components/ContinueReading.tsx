@@ -18,7 +18,7 @@ export function ContinueReading({ compact = false }: { compact?: boolean }) {
     <Link
       to="/quran/$num"
       params={{ num: String(progress.surahNumber) }}
-      search={{ page: progress.page }}
+      search={{ page: progress.globalPage ? progress.page : undefined }}
       className="group relative block overflow-hidden rounded-3xl border p-4 transition-all active:scale-[0.98]"
       style={{
         background: "var(--gradient-card)",

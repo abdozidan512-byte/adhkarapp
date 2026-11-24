@@ -1,9 +1,9 @@
 import { getSurah, saveSurah, saveAudio, getAudio, deleteAudio, getMushafPage, saveMushafPage, deleteMushafPage } from "./db";
-import { reciters, type ReciterId } from "@/data/surahs";
+import { reciters, surahs, type ReciterId } from "@/data/surahs";
 
 const mushafPageDownloads = new Map<string, Promise<Blob>>();
 
-export type Ayah = { numberInSurah: number; text: string; page?: number; juz?: number };
+export type Ayah = { numberInSurah: number; text: string; page?: number; juz?: number; surahNumber?: number };
 
 // إزالة البسملة من بداية الآية الأولى لأي سورة
 // نطبّق المطابقة على النص بعد تجريد التشكيل والمسافات حتى نتعامل مع كل المصادر
@@ -38,6 +38,93 @@ function stripLeadingBismillah(text: string): string {
     return text.slice(consumed).replace(/^[\s\u0600-\u061F]+/, "").trim();
   }
   return text;
+}
+
+let allQuranTextRequest: Promise<Ayah[]> | null = null;
+
+/**
+ * Returns the whole Quran in canonical Madani page order. It reuses the
+ * per-surah IndexedDB cache when complete, otherwise fills it from one
+ * Uthmani Quran response so the reader can keep page navigation continuous.
+ */
+export async function fetchAllQuranText(): Promise<Ayah[]> {
+  if (allQuranTextRequest) return allQuranTextRequest;
+
+  const request = (async () => {
+    const cachedSurahs = await Promise.all(surahs.map((surah) => getSurah(surah.number)));
+    const cacheIsComplete = cachedSurahs.every((cached, index) =>
+      !!cached &&
+      cached.ayahs.length === surahs[index].numberOfAyahs &&
+      cached.ayahs.every((ayah) => Number.isInteger(ayah.page) && (ayah.page ?? 0) >= 1 && (ayah.page ?? 0) <= 604),
+    );
+
+    if (cacheIsComplete) {
+      return cachedSurahs.flatMap((cached, index) =>
+        cached!.ayahs.map((ayah) => ({ ...ayah, surahNumber: surahs[index].number })),
+      );
+    }
+
+    const response = await fetch("https://api.alquran.cloud/v1/quran/quran-uthmani");
+    if (!response.ok) throw new Error(`تعذّر تحميل بيانات المصحف: ${response.status}`);
+    const json = await response.json();
+    const sourceAyahs = json?.data?.ayahs;
+    const expectedAyahCount = surahs.reduce((total, surah) => total + surah.numberOfAyahs, 0);
+    if (!Array.isArray(sourceAyahs) || sourceAyahs.length !== expectedAyahCount) {
+      throw new Error("بيانات صفحات المصحف غير مكتملة.");
+    }
+
+    const grouped: Ayah[][] = surahs.map(() => []);
+    for (const sourceAyah of sourceAyahs) {
+      const surahNumber = Number(sourceAyah?.surah?.number);
+      const numberInSurah = Number(sourceAyah?.numberInSurah);
+      const page = Number(sourceAyah?.page);
+      const target = grouped[surahNumber - 1];
+      if (
+        !target ||
+        !Number.isInteger(numberInSurah) ||
+        numberInSurah < 1 ||
+        !Number.isInteger(page) ||
+        page < 1 ||
+        page > 604 ||
+        typeof sourceAyah?.text !== "string"
+      ) {
+        throw new Error("بيانات آيات المصحف غير صالحة.");
+      }
+      const surah = surahs[surahNumber - 1];
+      const text = numberInSurah === 1 && surahNumber !== 1 && surahNumber !== 9
+        ? stripLeadingBismillah(sourceAyah.text)
+        : sourceAyah.text;
+      target.push({
+        numberInSurah,
+        text,
+        page,
+        juz: Number(sourceAyah.juz) || undefined,
+        surahNumber,
+      });
+    }
+
+    if (grouped.some((items, index) =>
+      items.length !== surahs[index].numberOfAyahs ||
+      items.some((ayah, ayahIndex) => ayah.numberInSurah !== ayahIndex + 1),
+    )) {
+      throw new Error("تعذّر التحقق من اكتمال آيات السور.");
+    }
+
+    for (let index = 0; index < grouped.length; index++) {
+      const surahNumber = surahs[index].number;
+      const cachedAyahs = grouped[index].map(({ surahNumber: _surahNumber, ...ayah }) => ayah);
+      await saveSurah(surahNumber, cachedAyahs);
+    }
+    return grouped.flat();
+  })();
+
+  allQuranTextRequest = request;
+  try {
+    return await request;
+  } catch (error) {
+    if (allQuranTextRequest === request) allQuranTextRequest = null;
+    throw error;
+  }
 }
 
 export async function fetchSurahText(surahNumber: number, signal?: AbortSignal): Promise<Ayah[]> {
