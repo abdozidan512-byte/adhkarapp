@@ -177,7 +177,7 @@ async function cropTajweedPage(blob: Blob): Promise<Blob> {
     const leftRail = findRail(leftPeak.peakX, leftPeak.peak);
     const rightRail = findRail(rightPeak.peakX, rightPeak.peak);
     // Start at the page rail so explanatory text beside it is excluded.
-    const leftSampleX = Math.max(0, leftRail.start + 1);
+    const leftSampleX = Math.max(0, leftRail.start);
     const rightSampleX = Math.min(sampleWidth, rightRail.end + 2);
     const sampleCropWidth = rightSampleX - leftSampleX;
     const cropLeft = Math.floor((leftSampleX * sourceWidth) / sampleWidth);
